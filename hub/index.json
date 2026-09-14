@@ -1,0 +1,30 @@
+{
+  "v": 1,
+  "messages": [
+    {
+      "id": "welcome",
+      "type": "text",
+      "md": "Dán ảnh hoặc bấm kẹp giấy — ảnh nằm chờ bên dưới. Gõ chữ rồi gửi kèm.",
+      "ts": 1725000000000
+    },
+    {
+      "id": "mu0rf7ve3ly1uy",
+      "type": "text",
+      "md": "hello",
+      "ts": 1789361139866
+    },
+    {
+      "id": "mu0rgfu3koxl3r",
+      "type": "text",
+      "md": "dsfdsf",
+      "ts": 1789361196843
+    }
+  ],
+  "links": [
+    {
+      "id": "drive",
+      "name": "Shared drive",
+      "url": "https://drive.google.com"
+    }
+  ]
+}
