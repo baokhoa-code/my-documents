@@ -1,0 +1,9 @@
+{
+  "apiKey": "AIzaSyDVQZGeGrktLX_PKQyZWeDwgUTyxAjMMy0",
+  "authDomain": "nooauthchat.firebaseapp.com",
+  "databaseURL": "https://nooauthchat-default-rtdb.firebaseio.com",
+  "projectId": "nooauthchat",
+  "storageBucket": "nooauthchat.firebasestorage.app",
+  "messagingSenderId": "406148134426",
+  "appId": "1:406148134426:web:d877e6d85e1d3f634983a3"
+}
