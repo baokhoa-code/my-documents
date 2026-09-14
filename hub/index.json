@@ -8,28 +8,10 @@
       "ts": 1725000000000
     },
     {
-      "id": "welcome",
-      "type": "text",
-      "md": "Dán ảnh hoặc bấm kẹp giấy — ảnh nằm chờ bên dưới. Gõ chữ rồi gửi kèm.",
-      "ts": 1725000000000
-    },
-    {
       "id": "mu0rf7ve3ly1uy",
       "type": "text",
       "md": "hello",
       "ts": 1789361139866
-    },
-    {
-      "id": "mu0rf7ve3ly1uy",
-      "type": "text",
-      "md": "hello",
-      "ts": 1789361139866
-    },
-    {
-      "id": "mu0rgfu3koxl3r",
-      "type": "text",
-      "md": "dsfdsf",
-      "ts": 1789361196843
     },
     {
       "id": "mu0rgfu3koxl3r",
@@ -44,28 +26,10 @@
       "ts": 1789361807723
     },
     {
-      "id": "mu0rtj6zjar4po",
-      "type": "text",
-      "md": "hello",
-      "ts": 1789361807723
-    },
-    {
       "id": "mu168bx183onaw",
       "type": "text",
       "md": "hello",
       "ts": 1789386012757
-    },
-    {
-      "id": "mu168bx183onaw",
-      "type": "text",
-      "md": "hello",
-      "ts": 1789386012757
-    },
-    {
-      "id": "mu16bn5wtlkxgc",
-      "type": "text",
-      "md": "xin",
-      "ts": 1789386167300
     },
     {
       "id": "mu16bn5wtlkxgc",
@@ -80,28 +44,10 @@
       "ts": 1789386168519
     },
     {
-      "id": "mu16bo3ralh7k1",
-      "type": "text",
-      "md": "chào",
-      "ts": 1789386168519
-    },
-    {
       "id": "mu16bp4ro09xz2",
       "type": "text",
       "md": "bạn nha",
       "ts": 1789386169851
-    },
-    {
-      "id": "mu16bp4ro09xz2",
-      "type": "text",
-      "md": "bạn nha",
-      "ts": 1789386169851
-    },
-    {
-      "id": "mu16kpb8fxl9yq",
-      "type": "text",
-      "md": "hé lu",
-      "ts": 1789386589988
     },
     {
       "id": "mu16kpb8fxl9yq",
@@ -116,28 +62,10 @@
       "ts": 1789388653457
     },
     {
-      "id": "mu17sxht93vkr6",
-      "type": "text",
-      "md": "hello",
-      "ts": 1789388653457
-    },
-    {
       "id": "mu17t0k7q5ts46",
       "type": "text",
       "md": "xin chào",
       "ts": 1789388657431
-    },
-    {
-      "id": "mu17t0k7q5ts46",
-      "type": "text",
-      "md": "xin chào",
-      "ts": 1789388657431
-    },
-    {
-      "id": "mu17t5a93zdmag",
-      "type": "text",
-      "md": "cái lồn má",
-      "ts": 1789388663553
     },
     {
       "id": "mu17t5a93zdmag",
@@ -161,46 +89,10 @@
       "files": []
     },
     {
-      "id": "mu17tbz3uhkemh",
-      "type": "media",
-      "caption": "",
-      "ts": 1789388672223,
-      "images": [
-        {
-          "path": "hub/media/mu17tbz3uhkemh-0-image.jpg",
-          "name": "image.jpg",
-          "w": 845,
-          "h": 412
-        }
-      ],
-      "files": []
-    },
-    {
       "id": "mu18hydg77hqvl",
       "type": "text",
       "md": "lo",
       "ts": 1789389820996
-    },
-    {
-      "id": "mu18hydg77hqvl",
-      "type": "text",
-      "md": "lo",
-      "ts": 1789389820996
-    },
-    {
-      "id": "mu1b8t60knvzir",
-      "type": "media",
-      "caption": "",
-      "ts": 1789394433192,
-      "images": [
-        {
-          "path": "hub/media/mu1b8t60knvzir-0-image.jpg",
-          "name": "image.jpg",
-          "w": 418,
-          "h": 419
-        }
-      ],
-      "files": []
     },
     {
       "id": "mu1bgiay9tki45",
