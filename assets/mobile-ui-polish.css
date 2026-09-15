@@ -237,6 +237,27 @@
   min-height: 42px;
   padding: 9px 8px;
   line-height: 24px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(186, 199, 214, 0.7) transparent;
+}
+
+.composer-input::-webkit-scrollbar {
+  display: block;
+  width: 5px;
+}
+
+.composer-input::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.composer-input::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(186, 199, 214, 0.68);
+}
+
+.composer-input:not(.is-scrollable)::-webkit-scrollbar-thumb {
+  background: transparent;
 }
 
 .composer-attach,
