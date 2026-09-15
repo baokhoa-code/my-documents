@@ -65,6 +65,14 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
+.page-refresh-button svg {
+  transition: transform 240ms ease;
+}
+
+.page-refresh-button.is-refreshing svg {
+  animation: page-refresh-spin 600ms linear infinite;
+}
+
 .app-tabs {
   gap: 4px;
   padding: 5px 8px 6px;
@@ -436,6 +444,12 @@
   }
 }
 
+@keyframes page-refresh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes viewer-enter {
   from {
     opacity: 0;
@@ -550,6 +564,24 @@
 }
 
 @media (max-width: 350px) {
+  .app-logo {
+    display: none;
+  }
+
+  .app-header > div:first-child {
+    gap: 0;
+  }
+
+  .app-header h1 {
+    white-space: nowrap;
+    font-size: 14px;
+  }
+
+  .app-header-actions > button {
+    width: 40px;
+    height: 40px;
+  }
+
   .app-tab {
     font-size: 12px;
   }
