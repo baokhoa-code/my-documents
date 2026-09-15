@@ -461,6 +461,51 @@
   }
 }
 
+@media (min-width: 1100px) and (min-height: 700px) {
+  body {
+    background:
+      radial-gradient(
+        circle at 50% -12%,
+        rgba(64, 132, 214, 0.11),
+        transparent 34%
+      ),
+      #070a0f;
+  }
+
+  .app-shell {
+    position: relative !important;
+    top: auto !important;
+    left: auto !important;
+    width: min(1280px, calc(100vw - 48px)) !important;
+    max-width: 1280px !important;
+    height: calc(100dvh - 32px) !important;
+    margin: 16px auto;
+    align-self: center;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 24px;
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.42);
+  }
+
+  .app-header {
+    border-radius: 24px 24px 0 0;
+  }
+
+  .message-list {
+    max-width: 980px;
+    padding-inline: 32px;
+  }
+
+  .composer-row {
+    width: min(1040px, calc(100% - 32px));
+    margin-inline: auto;
+  }
+
+  .app-composer {
+    border-radius: 0 0 24px 24px;
+  }
+}
+
 @media (max-width: 640px) {
   .app-header {
     min-height: 56px;
