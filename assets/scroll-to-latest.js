@@ -36,7 +36,16 @@ function isAwayFromLatest() {
 }
 
 function updateButton() {
-  if (!thread || !thread.isConnected || keyboardIsOpen() || !isAwayFromLatest()) {
+  const modalIsOpen = Boolean(
+    document.querySelector('[role="dialog"][aria-modal="true"]'),
+  );
+  if (
+    !thread ||
+    !thread.isConnected ||
+    modalIsOpen ||
+    keyboardIsOpen() ||
+    !isAwayFromLatest()
+  ) {
     button.hidden = true;
     return;
   }
