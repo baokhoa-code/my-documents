@@ -1,74 +1,32 @@
-const VAULT_DB = "my-documents-local-vault";
-const VAULT_STORE = "keys";
-const VAULT_KEY_ID = "totp-aes-v1";
-const VAULT_VALUE_ID = "my-documents-local-totp-v1";
+const FIREBASE_CONFIG_URL = "./hub/firebase-config.json";
+const FIREBASE_PATH = "hub/mfaAccounts";
+const CACHE_KEY = "my-documents-mfa-accounts-v2";
+const LEGACY_VALUE_KEY = "my-documents-local-totp-v1";
+const LEGACY_DB = "my-documents-local-vault";
+const LEGACY_STORE = "keys";
+const LEGACY_KEY_ID = "totp-aes-v1";
 
-let vaultRecord = null;
+let accounts = readCache();
+let databaseUrl = "";
+let stream = null;
+let pollTimer = null;
 let tickTimer = null;
+let initialized = false;
+let currentView = "list";
 
-const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
-function bytesToBase64(bytes) {
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
+function readCache() {
+  try {
+    const value = JSON.parse(localStorage.getItem(CACHE_KEY) || "{}");
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  } catch {
+    return {};
+  }
 }
 
-function base64ToBytes(value) {
-  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
-}
-
-function openVaultDb() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(VAULT_DB, 1);
-    request.onupgradeneeded = () => request.result.createObjectStore(VAULT_STORE);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function getLocalEncryptionKey() {
-  const db = await openVaultDb();
-  const existing = await new Promise((resolve, reject) => {
-    const request = db.transaction(VAULT_STORE).objectStore(VAULT_STORE).get(VAULT_KEY_ID);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-  if (existing) return existing;
-
-  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
-    "encrypt",
-    "decrypt",
-  ]);
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(VAULT_STORE, "readwrite");
-    transaction.objectStore(VAULT_STORE).put(key, VAULT_KEY_ID);
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-  return key;
-}
-
-async function encryptAccount(account) {
-  const key = await getLocalEncryptionKey();
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ciphertext = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    encoder.encode(JSON.stringify(account)),
-  );
-  return { v: 1, iv: bytesToBase64(iv), data: bytesToBase64(new Uint8Array(ciphertext)) };
-}
-
-async function decryptAccount(record) {
-  const key = await getLocalEncryptionKey();
-  const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: base64ToBytes(record.iv) },
-    key,
-    base64ToBytes(record.data),
-  );
-  return JSON.parse(decoder.decode(plaintext));
+function writeCache() {
+  localStorage.setItem(CACHE_KEY, JSON.stringify(accounts));
 }
 
 function normalizeBase32(value) {
@@ -95,24 +53,32 @@ function decodeBase32(value) {
 function parseOtpAuth(value) {
   const input = value.trim();
   if (!input.toLowerCase().startsWith("otpauth://")) {
-    return { secret: normalizeBase32(input), label: "ChatGPT", issuer: "OpenAI", digits: 6, period: 30 };
+    return {
+      secret: normalizeBase32(input),
+      label: "Tài khoản MFA",
+      issuer: "MFA",
+      algorithm: "SHA1",
+      digits: 6,
+      period: 30,
+    };
   }
   const url = new URL(input);
   if (url.protocol !== "otpauth:" || url.hostname !== "totp") {
     throw new Error("QR này không phải mã TOTP.");
   }
-  const secret = normalizeBase32(url.searchParams.get("secret") || "");
   const label = decodeURIComponent(url.pathname.replace(/^\//, "")) || "Tài khoản MFA";
   return {
-    secret,
+    secret: normalizeBase32(url.searchParams.get("secret") || ""),
     label,
     issuer: url.searchParams.get("issuer") || label.split(":")[0] || "MFA",
+    algorithm: (url.searchParams.get("algorithm") || "SHA1").toUpperCase(),
     digits: Number(url.searchParams.get("digits") || 6),
     period: Number(url.searchParams.get("period") || 30),
   };
 }
 
 async function generateTotp(account, now = Date.now()) {
+  if (account.algorithm !== "SHA1") throw new Error("Hiện chỉ hỗ trợ TOTP SHA-1.");
   const counter = BigInt(Math.floor(now / 1000 / account.period));
   const message = new Uint8Array(8);
   let remaining = counter;
@@ -138,26 +104,178 @@ async function generateTotp(account, now = Date.now()) {
   return String(number).padStart(account.digits, "0");
 }
 
+async function loadFirebaseConfig() {
+  const response = await fetch(`${FIREBASE_CONFIG_URL}?t=${Date.now()}`, { cache: "no-store" });
+  if (!response.ok) throw new Error("Không tải được cấu hình Firebase.");
+  const config = await response.json();
+  if (!config.databaseURL) throw new Error("Cấu hình Firebase thiếu databaseURL.");
+  databaseUrl = config.databaseURL.replace(/\/$/, "");
+}
+
+function firebaseEndpoint(child = "") {
+  const suffix = child ? `/${encodeURIComponent(child)}` : "";
+  return `${databaseUrl}/${FIREBASE_PATH}${suffix}.json`;
+}
+
+function normalizeAccount(value, id = value?.id) {
+  if (!value || typeof value !== "object" || !value.secret) return null;
+  return {
+    ...value,
+    id,
+    secret: normalizeBase32(String(value.secret)),
+    label: String(value.label || value.issuer || "Tài khoản MFA"),
+    issuer: String(value.issuer || "MFA"),
+    algorithm: String(value.algorithm || "SHA1").toUpperCase(),
+    digits: Number(value.digits || 6),
+    period: Number(value.period || 30),
+  };
+}
+
+function normalizeAccounts(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([id, account]) => [id, normalizeAccount(account, id)])
+      .filter(([, account]) => account),
+  );
+}
+
+async function fetchAccounts() {
+  const response = await fetch(`${firebaseEndpoint()}?t=${Date.now()}`, { cache: "no-store" });
+  if (!response.ok) throw new Error(`Firebase HTTP ${response.status}`);
+  accounts = normalizeAccounts(await response.json());
+  writeCache();
+  if (!modal.hidden && currentView === "list") renderList();
+}
+
+async function saveAccount(account) {
+  const id = account.id || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const record = { ...normalizeAccount(account, id), updatedAt: Date.now() };
+  const response = await fetch(firebaseEndpoint(id), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(record),
+  });
+  if (!response.ok) throw new Error(`Firebase HTTP ${response.status}`);
+  accounts[id] = record;
+  writeCache();
+}
+
+async function removeAccount(id) {
+  const response = await fetch(firebaseEndpoint(id), { method: "DELETE" });
+  if (!response.ok) throw new Error(`Firebase HTTP ${response.status}`);
+  delete accounts[id];
+  writeCache();
+}
+
+function applyStreamEvent(event, isPatch) {
+  try {
+    const payload = JSON.parse(event.data);
+    const parts = String(payload.path || "/").split("/").filter(Boolean);
+    if (!parts.length) {
+      if (isPatch) {
+        for (const [id, value] of Object.entries(payload.data || {})) {
+          if (value == null) delete accounts[id];
+          else accounts[id] = value;
+        }
+      } else {
+        accounts = normalizeAccounts(payload.data);
+      }
+    } else {
+      const [id, field] = parts;
+      if (!field) {
+        if (payload.data == null) delete accounts[id];
+        else accounts[id] = isPatch ? { ...(accounts[id] || {}), ...payload.data } : payload.data;
+      } else if (accounts[id]) {
+        if (payload.data == null) delete accounts[id][field];
+        else accounts[id][field] = payload.data;
+      }
+    }
+    accounts = normalizeAccounts(accounts);
+    writeCache();
+    if (!modal.hidden && currentView === "list") renderList();
+  } catch {
+    // EventSource tự kết nối lại; lần mở tiếp theo luôn tải snapshot mới.
+  }
+}
+
+function startRealtimeSync() {
+  if ("EventSource" in window) {
+    stream?.close();
+    stream = new EventSource(firebaseEndpoint());
+    stream.addEventListener("put", (event) => applyStreamEvent(event, false));
+    stream.addEventListener("patch", (event) => applyStreamEvent(event, true));
+  } else {
+    clearInterval(pollTimer);
+    pollTimer = window.setInterval(() => fetchAccounts().catch(() => {}), 5000);
+  }
+}
+
+function base64ToBytes(value) {
+  return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+}
+
+async function migrateLegacyAccount() {
+  const raw = localStorage.getItem(LEGACY_VALUE_KEY);
+  if (!raw) return;
+  try {
+    const record = JSON.parse(raw);
+    const db = await new Promise((resolve, reject) => {
+      const request = indexedDB.open(LEGACY_DB, 1);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    const key = await new Promise((resolve, reject) => {
+      const request = db.transaction(LEGACY_STORE).objectStore(LEGACY_STORE).get(LEGACY_KEY_ID);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    if (!key) return;
+    const plaintext = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: base64ToBytes(record.iv) },
+      key,
+      base64ToBytes(record.data),
+    );
+    const account = JSON.parse(decoder.decode(plaintext));
+    if (account.secret) await saveAccount(account);
+    localStorage.removeItem(LEGACY_VALUE_KEY);
+  } catch {
+    // Giữ dữ liệu cũ nguyên vẹn nếu không thể chuyển đổi.
+  }
+}
+
+async function initializeSync() {
+  if (initialized) return;
+  await loadFirebaseConfig();
+  await fetchAccounts();
+  await migrateLegacyAccount();
+  startRealtimeSync();
+  initialized = true;
+}
+
 const style = document.createElement("style");
 style.textContent = `
   .mfa-modal[hidden] { display: none !important; }
   .mfa-modal { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 16px; background: rgba(0,0,0,.72); }
-  .mfa-card { width: min(420px, 100%); max-height: min(720px, calc(100dvh - 32px)); overflow: auto; border: 1px solid var(--color-line); border-radius: 18px; background: var(--color-bar); color: var(--color-fg); box-shadow: 0 24px 80px rgba(0,0,0,.55); }
-  .mfa-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid var(--color-line); }
+  .mfa-card { width: min(480px, 100%); max-height: min(760px, calc(100dvh - 32px)); overflow: auto; border: 1px solid var(--color-line); border-radius: 18px; background: var(--color-bar); color: var(--color-fg); box-shadow: 0 24px 80px rgba(0,0,0,.55); }
+  .mfa-head, .mfa-row, .mfa-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .mfa-head { padding: 16px 18px; border-bottom: 1px solid var(--color-line); }
   .mfa-body { display: grid; gap: 14px; padding: 18px; }
-  .mfa-close, .mfa-header-button { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; }
-  .mfa-close:hover, .mfa-header-button:hover { background: var(--color-bg); }
+  .mfa-close, .mfa-header-button, .mfa-icon-button { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; }
+  .mfa-close:hover, .mfa-header-button:hover, .mfa-icon-button:hover { background: var(--color-bg); }
   .mfa-field { width: 100%; min-height: 44px; border: 1px solid var(--color-line); border-radius: 12px; padding: 10px 12px; background: var(--color-bg); color: var(--color-fg); outline: none; }
   .mfa-file { display: grid; gap: 6px; border: 1px dashed var(--color-muted); border-radius: 12px; padding: 14px; color: var(--color-muted); }
   .mfa-file input { width: 100%; }
-  .mfa-primary, .mfa-danger { min-height: 44px; border-radius: 12px; padding: 10px 14px; font-weight: 600; }
+  .mfa-primary, .mfa-secondary, .mfa-danger { min-height: 44px; border-radius: 12px; padding: 10px 14px; font-weight: 600; }
   .mfa-primary { background: var(--color-send); color: var(--color-send-fg); }
-  .mfa-danger { background: var(--color-file); color: var(--color-danger); }
-  .mfa-code { font: 700 clamp(38px, 12vw, 58px)/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .12em; text-align: center; color: var(--color-accent); cursor: pointer; }
+  .mfa-secondary, .mfa-danger { background: var(--color-file); }
+  .mfa-danger { color: var(--color-danger); }
+  .mfa-account { display: grid; gap: 12px; border: 1px solid var(--color-line); border-radius: 16px; padding: 14px; background: var(--color-surface); }
+  .mfa-code { font: 700 clamp(30px, 9vw, 44px)/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .1em; color: var(--color-accent); cursor: pointer; }
   .mfa-meta, .mfa-help, .mfa-error { font-size: 13px; line-height: 1.5; }
   .mfa-meta, .mfa-help { color: var(--color-muted); }
   .mfa-error { color: var(--color-danger); }
-  .mfa-progress { height: 5px; overflow: hidden; border-radius: 999px; background: var(--color-bg); }
+  .mfa-progress { height: 4px; overflow: hidden; border-radius: 999px; background: var(--color-bg); }
   .mfa-progress > span { display: block; height: 100%; background: var(--color-accent); transition: width 1s linear; }
 `;
 document.head.append(style);
@@ -168,14 +286,13 @@ modal.hidden = true;
 modal.innerHTML = `
   <section class="mfa-card" role="dialog" aria-modal="true" aria-labelledby="mfa-title">
     <header class="mfa-head">
-      <div><h2 id="mfa-title" style="font-weight:700">Mã xác thực</h2><p class="mfa-meta">Chỉ lưu trên trình duyệt này</p></div>
+      <div><h2 id="mfa-title" style="font-weight:700">Mã xác thực</h2><p class="mfa-meta">Đồng bộ nhiều thiết bị qua Firebase</p></div>
       <button class="mfa-close" type="button" aria-label="Đóng">✕</button>
     </header>
     <div class="mfa-body" data-mfa-body></div>
   </section>
 `;
 document.body.append(modal);
-
 const body = modal.querySelector("[data-mfa-body]");
 
 function showError(message) {
@@ -183,18 +300,92 @@ function showError(message) {
   if (error) error.textContent = message;
 }
 
-function renderSetup() {
+function startTicker() {
+  clearInterval(tickTimer);
+  async function tick() {
+    for (const card of body.querySelectorAll("[data-mfa-account]")) {
+      const account = accounts[card.dataset.mfaAccount];
+      if (!account) continue;
+      try {
+        const remaining = account.period - (Math.floor(Date.now() / 1000) % account.period);
+        card.querySelector("[data-mfa-code]").textContent = await generateTotp(account);
+        card.querySelector("[data-mfa-progress]").style.width = `${(remaining / account.period) * 100}%`;
+        card.querySelector("[data-mfa-countdown]").textContent = `${remaining} giây`;
+      } catch {
+        card.querySelector("[data-mfa-code]").textContent = "Lỗi mã";
+      }
+    }
+  }
+  tick();
+  tickTimer = window.setInterval(tick, 1000);
+}
+
+function createAccountCard(account) {
+  const card = document.createElement("article");
+  card.className = "mfa-account";
+  card.dataset.mfaAccount = account.id;
+  card.innerHTML = `
+    <div class="mfa-card-head"><div><strong data-mfa-label></strong><p class="mfa-meta" data-mfa-issuer></p></div><button class="mfa-icon-button mfa-danger" type="button" aria-label="Xóa mã">✕</button></div>
+    <div class="mfa-row"><button class="mfa-code" type="button" data-mfa-code aria-label="Sao chép mã xác thực">------</button><span class="mfa-meta" data-mfa-countdown></span></div>
+    <div class="mfa-progress"><span data-mfa-progress></span></div>
+  `;
+  card.querySelector("[data-mfa-label]").textContent = account.label;
+  card.querySelector("[data-mfa-issuer]").textContent = account.issuer;
+  const codeButton = card.querySelector("[data-mfa-code]");
+  codeButton.addEventListener("click", async () => {
+    await navigator.clipboard.writeText(codeButton.textContent);
+    card.querySelector("[data-mfa-countdown]").textContent = "Đã sao chép";
+  });
+  card.querySelector("[aria-label='Xóa mã']").addEventListener("click", async () => {
+    if (!window.confirm(`Xóa mã “${account.label}” trên tất cả thiết bị?`)) return;
+    try {
+      await removeAccount(account.id);
+      renderList();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Không xóa được mã.");
+    }
+  });
+  return card;
+}
+
+function renderList() {
+  currentView = "list";
   clearInterval(tickTimer);
   body.innerHTML = `
-    <p class="mfa-help">Tải ảnh QR lên ngay tại đây hoặc mở “Bạn gặp vấn đề khi quét?” rồi dán khóa thiết lập thủ công.</p>
+    <div class="mfa-row"><p class="mfa-help">Các mã dưới đây tự cập nhật và xuất hiện trên mọi thiết bị dùng web này.</p><button class="mfa-primary" data-mfa-add type="button">+ Thêm</button></div>
+    <div data-mfa-list style="display:grid;gap:12px"></div>
+    <p class="mfa-error" data-mfa-error></p>
+  `;
+  const list = body.querySelector("[data-mfa-list]");
+  const sorted = Object.values(accounts).sort((a, b) => a.label.localeCompare(b.label, "vi"));
+  if (!sorted.length) {
+    const empty = document.createElement("p");
+    empty.className = "mfa-help";
+    empty.style.textAlign = "center";
+    empty.textContent = "Chưa có mã nào. Bấm “+ Thêm” để bắt đầu.";
+    list.append(empty);
+  } else {
+    for (const account of sorted) list.append(createAccountCard(account));
+  }
+  body.querySelector("[data-mfa-add]").addEventListener("click", renderSetup);
+  startTicker();
+}
+
+function renderSetup() {
+  currentView = "setup";
+  clearInterval(tickTimer);
+  body.innerHTML = `
+    <button class="mfa-secondary" data-mfa-back type="button">← Danh sách mã</button>
+    <p class="mfa-help">Tải ảnh QR lên hoặc mở “Bạn gặp vấn đề khi quét?” rồi dán khóa thiết lập thủ công.</p>
     <label class="mfa-file">Ảnh QR MFA<input data-mfa-file type="file" accept="image/*"></label>
     <div style="text-align:center;color:var(--color-muted);font-size:12px">HOẶC</div>
     <label class="mfa-help">Khóa thiết lập thủ công<input data-mfa-secret class="mfa-field" type="password" autocomplete="off" spellcheck="false" placeholder="Ví dụ: JBSWY3DPEHPK3PXP"></label>
     <label class="mfa-help">Tên hiển thị<input data-mfa-label class="mfa-field" value="ChatGPT" maxlength="80"></label>
     <p class="mfa-error" data-mfa-error></p>
-    <button class="mfa-primary" data-mfa-save type="button">Lưu và tạo mã</button>
+    <button class="mfa-primary" data-mfa-save type="button">Lưu và đồng bộ</button>
   `;
   let scanned = null;
+  body.querySelector("[data-mfa-back]").addEventListener("click", renderList);
   body.querySelector("[data-mfa-file]").addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -207,71 +398,41 @@ function renderSetup() {
       if (!codes[0]?.rawValue) throw new Error("Không tìm thấy QR trong ảnh.");
       scanned = parseOtpAuth(codes[0].rawValue);
       body.querySelector("[data-mfa-label]").value = scanned.label || scanned.issuer;
-      showError("Đã đọc QR. Bấm “Lưu và tạo mã”.");
+      showError("Đã đọc QR. Bấm “Lưu và đồng bộ”.");
     } catch (error) {
       showError(error instanceof Error ? error.message : "Không đọc được QR.");
     }
   });
   body.querySelector("[data-mfa-save]").addEventListener("click", async () => {
+    const button = body.querySelector("[data-mfa-save]");
     try {
       const manual = body.querySelector("[data-mfa-secret]").value;
       const account = scanned || parseOtpAuth(manual);
       account.label = body.querySelector("[data-mfa-label]").value.trim() || account.label;
       if (![6, 8].includes(account.digits) || account.period < 15) throw new Error("Thông số TOTP không được hỗ trợ.");
       await generateTotp(account);
-      vaultRecord = await encryptAccount(account);
-      localStorage.setItem(VAULT_VALUE_ID, JSON.stringify(vaultRecord));
-      renderCode(account);
+      button.disabled = true;
+      button.textContent = "Đang đồng bộ…";
+      await saveAccount(account);
+      renderList();
     } catch (error) {
-      showError(error instanceof Error ? error.message : "Không lưu được khóa MFA.");
+      button.disabled = false;
+      button.textContent = "Lưu và đồng bộ";
+      showError(error instanceof Error ? error.message : "Không lưu được mã MFA.");
     }
   });
 }
 
-function renderCode(account) {
-  body.innerHTML = `
-    <div style="text-align:center"><strong data-mfa-label></strong><p class="mfa-meta" data-mfa-issuer></p></div>
-    <button class="mfa-code" type="button" data-mfa-code aria-label="Sao chép mã xác thực">------</button>
-    <div class="mfa-progress"><span data-mfa-progress></span></div>
-    <p class="mfa-meta" style="text-align:center" data-mfa-countdown></p>
-    <p class="mfa-help" style="text-align:center">Bấm vào mã để sao chép</p>
-    <button class="mfa-danger" data-mfa-remove type="button">Xóa khóa khỏi trình duyệt</button>
-  `;
-  body.querySelector("[data-mfa-label]").textContent = account.label;
-  body.querySelector("[data-mfa-issuer]").textContent = account.issuer;
-  const codeButton = body.querySelector("[data-mfa-code]");
-  async function tick() {
-    const remaining = account.period - (Math.floor(Date.now() / 1000) % account.period);
-    codeButton.textContent = await generateTotp(account);
-    body.querySelector("[data-mfa-progress]").style.width = `${(remaining / account.period) * 100}%`;
-    body.querySelector("[data-mfa-countdown]").textContent = `Mã mới sau ${remaining} giây`;
-  }
-  codeButton.addEventListener("click", async () => {
-    await navigator.clipboard.writeText(codeButton.textContent);
-    body.querySelector("[data-mfa-countdown]").textContent = "Đã sao chép mã";
-  });
-  body.querySelector("[data-mfa-remove]").addEventListener("click", () => {
-    if (!window.confirm("Xóa khóa MFA khỏi trình duyệt này? Bạn sẽ cần QR hoặc khóa thiết lập để thêm lại.")) return;
-    localStorage.removeItem(VAULT_VALUE_ID);
-    vaultRecord = null;
-    renderSetup();
-  });
-  tick();
-  clearInterval(tickTimer);
-  tickTimer = window.setInterval(tick, 1000);
-}
-
 async function openAuthenticator() {
   modal.hidden = false;
+  body.innerHTML = `<p class="mfa-help" style="text-align:center">Đang tải danh sách mã…</p>`;
   try {
-    vaultRecord ||= JSON.parse(localStorage.getItem(VAULT_VALUE_ID) || "null");
-    if (!vaultRecord) return renderSetup();
-    renderCode(await decryptAccount(vaultRecord));
-  } catch {
-    localStorage.removeItem(VAULT_VALUE_ID);
-    vaultRecord = null;
-    renderSetup();
-    showError("Không mở được dữ liệu cũ. Hãy thêm lại khóa MFA.");
+    await initializeSync();
+    await fetchAccounts();
+    renderList();
+  } catch (error) {
+    renderList();
+    showError(`${error instanceof Error ? error.message : "Không kết nối được Firebase."} Đang hiển thị dữ liệu lưu gần nhất.`);
   }
 }
 
