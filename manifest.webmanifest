@@ -1,0 +1,20 @@
+{
+  "id": "./",
+  "name": "My Documents",
+  "short_name": "My Documents",
+  "lang": "vi",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#121417",
+  "background_color": "#0a0e13",
+  "icons": [
+    {
+      "src": "./assets/favicon-x7tA70HH.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

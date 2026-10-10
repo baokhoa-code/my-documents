@@ -12,6 +12,59 @@
   --color-send: #4a9cff;
 }
 
+#mobile-portrait-guard[hidden] {
+  display: none !important;
+}
+
+#mobile-portrait-guard {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: grid;
+  place-items: center;
+  padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
+    max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  background: var(--color-bg);
+  color: var(--color-fg);
+  text-align: center;
+  outline: none;
+  touch-action: none;
+  overscroll-behavior: none;
+}
+
+.mobile-portrait-content {
+  max-width: 440px;
+}
+
+.mobile-portrait-content svg {
+  margin: 0 auto 16px;
+  color: var(--color-accent);
+}
+
+.mobile-portrait-content h2 {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.mobile-portrait-content p {
+  margin-top: 10px;
+  color: var(--color-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.is-mobile-landscape,
+.is-mobile-landscape body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+.is-mobile-landscape body > :not(#mobile-portrait-guard) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 .app-shell {
   background:
     radial-gradient(
