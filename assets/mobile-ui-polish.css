@@ -223,6 +223,9 @@
 }
 
 .composer-row {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
   gap: 2px;
   padding: 3px;
   border: 1px solid rgba(255, 255, 255, 0.075);
@@ -234,6 +237,7 @@
 }
 
 .composer-input {
+  min-width: 0;
   min-height: 42px;
   padding: 9px 8px;
   line-height: 24px;
@@ -335,10 +339,14 @@
   object-fit: contain;
 }
 
+.links-view {
+  min-width: 0;
+}
+
 .links-view > div:first-child {
   width: 100%;
-  max-width: 920px;
-  margin-inline: auto;
+  max-width: none;
+  margin-inline: 0;
   padding: 12px 12px 2px;
 }
 
@@ -351,10 +359,15 @@
 
 .links-view > div:nth-child(2) {
   width: 100%;
-  max-width: 920px;
-  margin-inline: auto;
+  max-width: none;
+  margin-inline: 0;
   gap: 9px;
   padding: 12px;
+}
+
+.links-view .field {
+  width: 100%;
+  min-width: 0;
 }
 
 .link-card {
@@ -531,12 +544,13 @@
     padding-inline: 18px;
   }
 
-  .composer-row {
-    width: min(1040px, calc(100% - 32px));
-    margin-inline: auto;
+  .links-view > div:first-child,
+  .links-view > div:nth-child(2) {
+    padding-inline: 18px;
   }
 
   .app-composer {
+    padding-inline: 18px;
     border-radius: 0 0 24px 24px;
   }
 }
