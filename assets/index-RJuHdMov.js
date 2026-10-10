@@ -136,7 +136,7 @@ var Ae=80;function je(e,t,n){let r=Math.round(n?.width??e),i=Math.round(n?.heigh
 }
 function Md({ images, index, onClose: requestedClose, onIndex }) {
   const image = images[index];
-  const stage = S.useRef(null), dialog = S.useRef(null);
+  const stage = S.useRef(null), dialog = S.useRef(null), picture = S.useRef(null);
   const onClose = useOverlayDismiss(dialog, requestedClose, 'viewer');
   const { toast } = Be();
   const [view, setView] = S.useState({ scale: Ed, x: 0, y: 0 });
@@ -149,6 +149,10 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
   function stagePoint(clientX, clientY) {
     const rect = stage.current.getBoundingClientRect();
     return { x: clientX - rect.left - rect.width / 2, y: clientY - rect.top - rect.height / 2 };
+  }
+  function outsidePicture(clientX, clientY) {
+    const rect = picture.current?.getBoundingClientRect();
+    return !!rect && (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom);
   }
   function beginDrag(pointer, suppressSwipe = false, suppressTap = false) {
     gesture.current = { kind: 'drag', id: pointer.id, start: pointer, view: { ...viewRef.current }, moved: false, suppressSwipe, suppressTap };
@@ -212,13 +216,15 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
     event.currentTarget.setPointerCapture(event.pointerId);
     if (beginPinch()) return;
     if (pointers.current.size !== 1) return;
+    const backdropClick = pointer.type === 'mouse' && window.matchMedia('(hover: hover) and (pointer: fine)').matches && outsidePicture(pointer.x, pointer.y);
     const previous = lastTap.current;
-    const doubleTap = previous && previous.type === pointer.type && Date.now() - previous.time < 280 && Math.hypot(pointer.x - previous.x, pointer.y - previous.y) < 24;
+    const doubleTap = !backdropClick && previous && previous.type === pointer.type && Date.now() - previous.time < 280 && Math.hypot(pointer.x - previous.x, pointer.y - previous.y) < 24;
     if (doubleTap) {
       lastTap.current = null;
       viewRef.current.scale > Ed + .01 ? resetView() : zoomAt(kd, pointer.x, pointer.y);
     }
-    beginDrag(pointer, !!doubleTap, !!doubleTap);
+    beginDrag(pointer, !!doubleTap, !!doubleTap || backdropClick);
+    gesture.current.backdropClick = backdropClick;
   }
   function pointerMove(event) {
     const previous = pointers.current.get(event.pointerId);
@@ -256,6 +262,10 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
     if (active?.kind !== 'drag' || active.id !== pointer.id) return;
     const dx = event.clientX - active.start.x, dy = event.clientY - active.start.y;
     gesture.current = null; setInteracting(false);
+    // Pointer capture retargets releases to the stage, so use image bounds at both ends.
+    if (!canceled && active.backdropClick && !active.moved && Math.hypot(dx, dy) <= 3 && outsidePicture(event.clientX, event.clientY)) {
+      lastTap.current = null; onClose(); return;
+    }
     if (!canceled && !active.suppressSwipe && pointer.type === 'touch' && active.view.scale <= Ed) {
       if (dy > 72 && Math.abs(dy) > 1.2 * Math.abs(dx)) { onClose(); return; }
       if (Math.abs(dx) > 56 && Math.abs(dx) > 1.2 * Math.abs(dy) && images.length > 1) {
@@ -333,7 +343,7 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
     ] }),
     O.jsxs('div', { ref: stage, className: `image-stage relative min-h-0 flex-1 overflow-hidden ${interacting ? 'cursor-grabbing' : view.scale > Ed ? 'cursor-grab' : 'cursor-zoom-in'}`, onPointerDown: pointerDown, onPointerMove: pointerMove, onPointerUp: event => pointerEnd(event), onPointerCancel: event => pointerEnd(event, true), onLostPointerCapture: event => pointerEnd(event, true), style: { touchAction: 'none' }, children: [
       images.length > 1 ? O.jsx('button', { type: 'button', className: 'image-viewer-nav image-viewer-prev absolute top-1/2 left-2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-bar text-fg', onClick: () => onIndex((index - 1 + images.length) % images.length), onPointerDown: event => event.stopPropagation(), 'aria-label': 'Ảnh trước', children: O.jsx(ne, { className: 'size-5' }) }) : null,
-      O.jsx('div', { className: 'image-transform-layer flex h-full w-full items-center justify-center will-change-transform', style: { transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, transformOrigin: 'center center' }, children: O.jsx('img', { src: image.src, alt: image.name, draggable: false, className: 'max-h-full max-w-full select-none rounded-lg object-contain' }) }),
+      O.jsx('div', { className: 'image-transform-layer flex h-full w-full items-center justify-center will-change-transform', style: { transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, transformOrigin: 'center center' }, children: O.jsx('img', { ref: picture, src: image.src, alt: image.name, draggable: false, className: 'max-h-full max-w-full select-none rounded-lg object-contain' }) }),
       images.length > 1 ? O.jsx('button', { type: 'button', className: 'image-viewer-nav image-viewer-next absolute top-1/2 right-2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-bar text-fg', onClick: () => onIndex((index + 1) % images.length), onPointerDown: event => event.stopPropagation(), 'aria-label': 'Ảnh sau', children: O.jsx(re, { className: 'size-5' }) }) : null,
     ] }),
     O.jsxs('div', { className: 'image-viewer-tools', role: 'group', 'aria-label': 'Thu phóng ảnh', children: [
