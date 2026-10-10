@@ -1,17 +1,21 @@
 const COMPOSER_SELECTOR = "textarea.composer-input";
 const boundComposers = new WeakSet();
+const desktopKeyboard = window.matchMedia("(hover: hover) and (pointer: fine)");
 
 function keepEnterForNewLine(event) {
-  if (event.key === "Enter") {
+  if (
+    event.key === "Enter" &&
+    (!desktopKeyboard.matches || event.shiftKey || event.isComposing || event.keyCode === 229)
+  ) {
     event.stopPropagation();
   }
 }
 
 function bindComposer(composer) {
+  composer.setAttribute("enterkeyhint", desktopKeyboard.matches ? "send" : "enter");
   if (boundComposers.has(composer)) return;
 
   boundComposers.add(composer);
-  composer.setAttribute("enterkeyhint", "enter");
   composer.addEventListener("keydown", keepEnterForNewLine);
 }
 
@@ -20,9 +24,8 @@ function bindComposers() {
 }
 
 const root = document.getElementById("root");
-const observer = new MutationObserver(() =>
-  window.requestAnimationFrame(bindComposers),
-);
+const observer = new MutationObserver(bindComposers);
 
 if (root) observer.observe(root, { childList: true, subtree: true });
+desktopKeyboard.addEventListener?.("change", bindComposers);
 bindComposers();
