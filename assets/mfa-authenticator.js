@@ -29,6 +29,7 @@ function readCache() {
 }
 
 function writeCache() {
+  if (window.__myDocumentsResetting) return;
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(accounts));
   } catch {
@@ -214,6 +215,7 @@ function applyStreamEvent(event, isPatch) {
 }
 
 function startRealtimeSync() {
+  if (window.__myDocumentsResetting) return;
   if ("EventSource" in window) {
     stream?.close();
     stream = new EventSource(firebaseEndpoint());
@@ -239,11 +241,16 @@ async function migrateLegacyAccount() {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    const key = await new Promise((resolve, reject) => {
-      const request = db.transaction(LEGACY_STORE).objectStore(LEGACY_STORE).get(LEGACY_KEY_ID);
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
+    let key;
+    try {
+      key = await new Promise((resolve, reject) => {
+        const request = db.transaction(LEGACY_STORE).objectStore(LEGACY_STORE).get(LEGACY_KEY_ID);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      db.close();
+    }
     if (!key) return;
     const plaintext = await crypto.subtle.decrypt(
       { name: "AES-GCM", iv: base64ToBytes(record.iv) },
@@ -257,6 +264,19 @@ async function migrateLegacyAccount() {
     // Giữ dữ liệu cũ nguyên vẹn nếu không thể chuyển đổi.
   }
 }
+
+window.addEventListener("my-documents:reset-local", () => {
+  stream?.close();
+  stream = null;
+  clearInterval(pollTimer);
+  clearInterval(tickTimer);
+});
+
+window.addEventListener("my-documents:reset-cancel", () => {
+  if (!initialized) return;
+  startRealtimeSync();
+  startTicker();
+});
 
 async function initializeSync() {
   if (initialized) return;
