@@ -628,8 +628,13 @@
 }
 
 .image-viewer-tools {
+  display: flex;
+  flex: none;
+  align-self: center;
+  align-items: center;
+  gap: 4px;
   margin: 7px 12px max(10px, env(safe-area-inset-bottom));
-  padding: 4px 7px;
+  padding: 3px;
   border: 1px solid rgba(255, 255, 255, 0.075);
   border-radius: 22px;
   background: rgba(21, 27, 35, 0.88);
@@ -638,6 +643,35 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.035);
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
+}
+
+.image-zoom-button {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border-radius: 18px;
+  color: #eef4fc;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.image-zoom-button:hover:not(:disabled) {
+  background: rgba(121, 184, 255, 0.12);
+}
+
+.image-zoom-button:disabled {
+  color: #657283;
+  opacity: 0.55;
+}
+
+.image-zoom-button:focus-visible {
+  outline: 2px solid #79b8ff;
+  outline-offset: 1px;
+}
+
+.image-transform-layer {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 @keyframes message-enter {
