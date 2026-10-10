@@ -230,6 +230,13 @@
   animation: message-enter 180ms ease-out both;
 }
 
+html.mobile-message-menus [data-thread] .message-row,
+html.mobile-message-menus [data-thread] .message-row * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
 .message-bubble,
 .media-message > article > div,
 .media-message > div {
