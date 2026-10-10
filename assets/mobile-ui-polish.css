@@ -237,6 +237,28 @@ html.mobile-message-menus [data-thread] .message-row * {
   -webkit-touch-callout: none !important;
 }
 
+.message-hold-target {
+  position: relative;
+  isolation: isolate;
+}
+
+.message-hold-ripple-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.message-hold-ripple-wave {
+  position: absolute;
+  border-radius: 50%;
+  background: #9bcaff;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .message-bubble,
 .media-message > article > div,
 .media-message > div {
