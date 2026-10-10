@@ -296,6 +296,109 @@
   transform: scale(0.91);
 }
 
+.composer-pending {
+  padding: 12px 3px 4px;
+}
+
+.composer-pending-header {
+  display: flex;
+  min-height: 24px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  line-height: 18px;
+}
+
+.composer-clear-pending {
+  flex: none;
+  padding-block: 3px;
+}
+
+.composer-pending-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.composer-pending-image,
+.composer-pending-add {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex: none;
+}
+
+.composer-pending-preview,
+.composer-pending-add {
+  overflow: hidden;
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-bubble);
+}
+
+.composer-pending-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: zoom-in;
+}
+
+.composer-pending-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.composer-pending-remove {
+  position: absolute;
+  z-index: 1;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 7px;
+  background: rgba(12, 17, 23, 0.92);
+  color: #eef4fc;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition: opacity 140ms ease, background-color 140ms ease;
+}
+
+.composer-pending-remove:hover {
+  background: #a3333f;
+}
+
+.composer-pending-preview:focus-visible,
+.composer-pending-remove:focus-visible,
+.composer-pending-add:focus-visible {
+  outline: 2px solid #79b8ff;
+  outline-offset: 2px;
+}
+
+.composer-pending-add {
+  display: grid;
+  place-items: center;
+  border-style: dashed;
+  background: transparent;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .composer-pending-remove {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .composer-pending-image:hover .composer-pending-remove,
+  .composer-pending-image:focus-within .composer-pending-remove {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
 .media-gallery {
   width: 100%;
   max-width: 1200px;
