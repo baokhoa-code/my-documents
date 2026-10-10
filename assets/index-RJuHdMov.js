@@ -244,7 +244,7 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
     const element = stage.current;
     if (!element) return;
     function wheel(event) {
-      if (!event.altKey) return;
+      if (!event.metaKey) return;
       event.preventDefault();
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? element.clientHeight : 1;
       const delta = Math.max(-600, Math.min(600, event.deltaY * unit));
