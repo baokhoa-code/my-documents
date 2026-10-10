@@ -204,12 +204,6 @@
       "type": "text",
       "md": "hello",
       "ts": 1789432757397
-    },
-    {
-      "id": "welcome",
-      "type": "text",
-      "md": "Dán ảnh hoặc bấm kẹp giấy — ảnh nằm chờ bên dưới. Gõ chữ rồi gửi kèm.",
-      "ts": 1725000000000
     }
   ],
   "links": [
