@@ -956,39 +956,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .image-viewer-sidebar {
-    flex-basis: 68px;
-    flex-direction: column;
-    border-left: 1px solid rgba(255, 255, 255, 0.055);
-    background: rgba(24, 29, 36, 0.94);
-  }
-
-  .image-filmstrip-controls {
-    flex: 0 0 42px;
-    flex-direction: row;
-    gap: 2px;
-  }
-
-  .image-filmstrip-step {
-    width: 30px;
-    height: 30px;
-  }
-
-  .image-filmstrip {
-    padding-inline: 6px;
-    border-left: 0;
-    background: transparent;
-  }
-
-  .image-filmstrip-date {
-    font-size: 10px;
-  }
-
-  .image-filmstrip-thumb {
-    margin-top: 8px;
-    border-radius: 7px;
-  }
-
   .image-stage {
     padding: 6px 10px;
   }

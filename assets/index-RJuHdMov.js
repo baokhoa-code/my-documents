@@ -180,8 +180,20 @@ function ImageThumbnailRail({ groups, index, onIndex, onStep }) {
     ] }, group.day)) }),
   ] });
 }
+function useDesktopImageRail() {
+  const media = S.useMemo(() => window.matchMedia('(min-width: 641px) and (hover: hover) and (pointer: fine)'), []);
+  const mobile = Boolean(navigator.userAgentData?.mobile || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
+  const [desktop, setDesktop] = S.useState(() => !mobile && media.matches);
+  S.useEffect(() => {
+    const update = () => setDesktop(!mobile && media.matches);
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, [media, mobile]);
+  return desktop;
+}
 function Md({ images, index, onClose: requestedClose, onIndex }) {
   const image = images[index];
+  const desktopRail = useDesktopImageRail();
   const filmstrip = S.useMemo(() => imagePreviewFilmstrip(images), [images]);
   const stage = S.useRef(null), dialog = S.useRef(null), picture = S.useRef(null);
   const onClose = useOverlayDismiss(dialog, requestedClose, 'viewer');
@@ -192,8 +204,9 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
   const pinchFrame = S.useRef(0);
   const [interacting, setInteracting] = S.useState(false), [downloading, setDownloading] = S.useState(false);
   function stepImage(direction) {
+    if (images.length < 2) return;
+    if (!desktopRail) { onIndex((index + direction + images.length) % images.length); return; }
     const order = filmstrip.order;
-    if (order.length < 2) return;
     const position = order.indexOf(index);
     onIndex(order[(position + direction + order.length) % order.length]);
   }
@@ -378,7 +391,7 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
     }
     window.addEventListener('keydown', keyDown);
     return () => window.removeEventListener('keydown', keyDown);
-  }, [index, filmstrip, onClose, onIndex]);
+  }, [index, filmstrip, desktopRail, onClose, onIndex]);
   async function download() {
     if (!image || downloading) return;
     setDownloading(true);
@@ -388,7 +401,7 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
   if (!image) return null;
   return O.jsxs('div', { ref: dialog, className: 'image-viewer fixed inset-0 z-50 flex flex-col bg-bg/95', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Xem ảnh', children: [
     O.jsxs('header', { className: 'image-viewer-header flex shrink-0 items-center justify-between gap-3 px-4 py-3 text-fg', children: [
-      O.jsxs('p', { className: 'image-viewer-title min-w-0 truncate text-sm font-medium', children: [O.jsxs('span', { className: 'image-counter', children: [filmstrip.order.indexOf(index) + 1, ' / ', images.length] }), O.jsx('span', { className: 'image-filename', children: image.name })] }),
+      O.jsxs('p', { className: 'image-viewer-title min-w-0 truncate text-sm font-medium', children: [O.jsxs('span', { className: 'image-counter', children: [(desktopRail ? filmstrip.order.indexOf(index) : index) + 1, ' / ', images.length] }), O.jsx('span', { className: 'image-filename', children: image.name })] }),
       O.jsxs('div', { className: 'flex items-center gap-1', children: [
         O.jsx('button', { type: 'button', className: 'grid size-11 place-items-center rounded-md text-fg hover:bg-bar disabled:opacity-40', onClick: () => void download(), disabled: downloading, 'aria-label': 'Tải ảnh', children: O.jsx(se, { className: 'size-5' }) }),
         O.jsx('button', { type: 'button', className: 'grid size-11 place-items-center rounded-md text-fg hover:bg-bar', onClick: onClose, 'aria-label': 'Đóng', children: O.jsx(Se, { className: 'size-5' }) }),
@@ -404,7 +417,7 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
           O.jsx('button', { type: 'button', className: 'image-zoom-button', disabled: view.scale <= Ed, onClick: () => zoomAt(viewRef.current.scale - Od), 'aria-label': 'Thu nhỏ', title: 'Thu nhỏ', children: O.jsx(ImageZoomIcon, { zoomOut: true }) }),
         ] }),
       ] }),
-      images.length > 1 ? O.jsx(ImageThumbnailRail, { groups: filmstrip.groups, index, onIndex, onStep: stepImage }) : null,
+      desktopRail && images.length > 1 ? O.jsx(ImageThumbnailRail, { groups: filmstrip.groups, index, onIndex, onStep: stepImage }) : null,
     ] }),
   ] });
 }
