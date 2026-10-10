@@ -240,7 +240,20 @@ html.mobile-message-menus [data-thread] .message-row * {
 .message-hold-target {
   position: relative;
   isolation: isolate;
-  will-change: transform;
+}
+
+.message-hold-overlay {
+  position: fixed;
+  z-index: 50;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.message-hold-preview {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+  transform-origin: center;
 }
 
 .message-hold-ripple-layer {

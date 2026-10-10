@@ -1,4 +1,4 @@
-import { releaseMessageHold } from "./message-context-menu.js?v=5";
+import { createMessageSnapshot, getMessageHoldBounds, hideMessageSource, releaseMessageHold } from "./message-context-menu.js?v=6";
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
@@ -8,25 +8,16 @@ export function createMessageMenuPresentation(root, menu, message) {
   const source = message.querySelector("article");
   const preview = root.querySelector(".message-menu-preview");
   const backdrop = root.querySelector(".message-menu-backdrop");
-  const sourceBounds = source.getBoundingClientRect();
-  const sourceWidth = source.offsetWidth, sourceHeight = source.offsetHeight;
-  const previousVisibility = source.style.visibility;
-  const clone = source.cloneNode(true);
-  clone.removeAttribute("id");
-  clone.querySelectorAll("[id]").forEach(element => element.removeAttribute("id"));
-  clone.querySelectorAll(".message-hold-ripple-layer").forEach(element => element.remove());
-  clone.classList.remove("message-hold-target");
-  Object.assign(clone.style, {
-    width: `${sourceWidth}px`, height: `${sourceHeight}px`, maxWidth: "none",
-    margin: "0", visibility: "visible", transform: "none",
-  });
-  preview.append(clone);
-  Object.assign(preview.style, { width: `${sourceWidth}px`, height: `${sourceHeight}px`, borderRadius: getComputedStyle(source).borderRadius });
+  const sourceBounds = getMessageHoldBounds(message) ?? source.getBoundingClientRect();
+  const snapshot = createMessageSnapshot(source);
+  const sourceWidth = snapshot.width, sourceHeight = snapshot.height;
+  const restoreSource = hideMessageSource(source);
+  releaseMessageHold(message);
+  preview.append(snapshot.clone);
+  Object.assign(preview.style, { width: `${sourceWidth}px`, height: `${sourceHeight}px`, borderRadius: snapshot.borderRadius });
   preview.style.transform = move(sourceBounds.left, sourceBounds.top, sourceBounds.width / sourceWidth);
   backdrop.style.opacity = "0";
   menu.style.opacity = "0";
-  source.style.visibility = "hidden";
-  releaseMessageHold(message);
 
   let animations = [], revision = 0, disposed = false, closing = false, opened = false, resizeFrame = 0;
   let previousLayout = "";
@@ -50,13 +41,18 @@ export function createMessageMenuPresentation(root, menu, message) {
     const y = clamp(bounds.top, top + 12, bottom - menuHeight - gap - sourceHeight * scale);
     return {
       preview: move(right - sourceWidth * scale, y, scale),
-      menu: move(clamp(right - menuWidth, left + 12, left + width - menuWidth - 12), y + sourceHeight * scale + gap),
+      menu: {
+        left: clamp(right - menuWidth, left + 12, left + width - menuWidth - 12),
+        top: y + sourceHeight * scale + gap,
+      },
     };
   }
   function current() {
     return {
       preview: getComputedStyle(preview).transform,
       menu: getComputedStyle(menu).transform,
+      menuLeft: parseFloat(menu.style.left) || 0,
+      menuTop: parseFloat(menu.style.top) || 0,
       opacity: getComputedStyle(menu).opacity,
       backdrop: getComputedStyle(backdrop).opacity,
     };
@@ -80,16 +76,21 @@ export function createMessageMenuPresentation(root, menu, message) {
     previousLayout = JSON.stringify(target);
     const duration = closing ? 220 : 280;
     const easing = closing ? "cubic-bezier(.4,0,.2,1)" : "cubic-bezier(.2,.9,.25,1.04)";
+    // Position the scrollable menu normally so WebKit paints its entire viewport.
+    menu.style.left = `${target.menu.left}px`;
+    menu.style.top = `${target.menu.top}px`;
+    const menuFrom = `translate(${from.menuLeft - target.menu.left}px, ${from.menuTop - target.menu.top}px) ${from.menu === "none" ? "" : from.menu}`;
     animate(backdrop, [{ opacity: from.backdrop }, { opacity: closing ? "0" : "1" }], closing ? 220 : 230, "ease-out");
     animate(preview, [{ transform: from.preview }, { transform: closing ? sourcePosition() : target.preview }], duration, easing);
     animate(menu, [
-      { transform: opened ? from.menu : `${target.menu} translateY(12px) scale(.9)`, opacity: from.opacity },
-      { transform: closing ? `${target.menu} translateY(10px) scale(.94)` : target.menu, opacity: closing ? "0" : "1" },
+      { transform: opened ? menuFrom : "translateY(12px) scale(.9)", opacity: from.opacity },
+      { transform: closing ? "translateY(10px) scale(.94)" : "none", opacity: closing ? "0" : "1" },
     ], duration, easing);
     opened = true;
     return Promise.all(animations.map(animation => animation.finished.then(() => true, () => false))).then(results => {
       if (disposed || revision !== token || results.some(result => !result)) return false;
-      cancelAnimations();
+      // Retain the finished entry frames until exit; cancelling here can leave stale WebKit clips.
+      if (closing) cancelAnimations();
       root.dataset.overlayState = closing ? "closed" : "open";
       return true;
     });
@@ -119,7 +120,7 @@ export function createMessageMenuPresentation(root, menu, message) {
       window.removeEventListener("resize", resize);
       window.visualViewport?.removeEventListener("resize", resize);
       window.visualViewport?.removeEventListener("scroll", resize);
-      source.style.visibility = previousVisibility;
+      restoreSource();
       preview.replaceChildren();
     },
   };
