@@ -1,4 +1,3 @@
-const BUTTON_ID = "refresh-page-button";
 const APP_STORAGE_KEY = /^(my-documents(?:[-.:]|$)|mydocuments(?:[-.:]|$))/i;
 
 function clearStorage(storage) {
@@ -48,66 +47,18 @@ async function resetLocalData() {
   clearStorage(sessionStorage);
 }
 
-function createRefreshButton(referenceButton) {
-  const button = document.createElement("button");
-  button.id = BUTTON_ID;
-  button.type = "button";
-  button.className = `${referenceButton.className} page-refresh-button`;
-  button.setAttribute("aria-label", "Xóa cache local và tải lại từ Firebase");
-  button.title = "Xóa cache local và tải lại từ Firebase";
-  button.innerHTML = `
-    <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24"
-         fill="none" stroke="currentColor" stroke-width="2"
-         stroke-linecap="round" stroke-linejoin="round">
-      <path d="M20 6v6h-6"></path>
-      <path d="M20 12a8 8 0 1 0-2.34 5.66L20 15.32"></path>
-    </svg>
-  `;
-  button.addEventListener("click", async () => {
-    if (button.classList.contains("is-refreshing")) return;
-    button.classList.add("is-refreshing");
-    button.disabled = true;
-    button.setAttribute("aria-disabled", "true");
-    try {
-      await resetLocalData();
-      window.location.reload();
-    } catch (error) {
-      window.__myDocumentsResetting = false;
-      window.dispatchEvent(new Event("my-documents:reset-cancel"));
-      button.classList.remove("is-refreshing");
-      button.disabled = false;
-      button.removeAttribute("aria-disabled");
-      button.title = "Không xóa được cache local. Bấm để thử lại.";
-      console.error("Không xóa được cache local", error);
-    }
-  });
-  return button;
-}
+let reloading = false;
 
-function mountRefreshButton() {
-  const searchButton = document.querySelector(
-    '.app-header button[aria-label="Tìm"]',
-  );
-  if (!searchButton?.parentElement) return;
-
-  const existing = document.getElementById(BUTTON_ID);
-  if (existing) {
-    if (existing.nextElementSibling !== searchButton) {
-      searchButton.parentElement.insertBefore(existing, searchButton);
-    }
-    return;
+export async function reloadFromFirebase() {
+  if (reloading) return;
+  reloading = true;
+  try {
+    await resetLocalData();
+    window.location.reload();
+  } catch (error) {
+    reloading = false;
+    window.__myDocumentsResetting = false;
+    window.dispatchEvent(new Event("my-documents:reset-cancel"));
+    throw error;
   }
-
-  searchButton.parentElement.insertBefore(
-    createRefreshButton(searchButton),
-    searchButton,
-  );
 }
-
-const root = document.getElementById("root");
-const observer = new MutationObserver(() =>
-  window.requestAnimationFrame(mountRefreshButton),
-);
-if (root) observer.observe(root, { childList: true, subtree: true });
-
-mountRefreshButton();

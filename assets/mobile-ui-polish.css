@@ -97,6 +97,15 @@
     0 6px 18px rgba(0, 0, 0, 0.22);
 }
 
+.app-logo:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.app-logo:active {
+  transform: scale(0.94);
+}
+
 .app-header h1 {
   letter-spacing: -0.02em;
 }
@@ -332,7 +341,7 @@
   border-radius: 999px;
 }
 
-.composer-send:not(:disabled) {
+.composer-send:not([aria-disabled="true"]) {
   background: linear-gradient(145deg, #62adff, #3388f0);
   color: white;
   box-shadow:
@@ -340,7 +349,8 @@
     inset 0 1px 0 rgba(255, 255, 255, 0.22);
 }
 
-.composer-send:disabled {
+.composer-send[aria-disabled="true"] {
+  color: var(--color-subtle);
   opacity: 0.5;
 }
 
