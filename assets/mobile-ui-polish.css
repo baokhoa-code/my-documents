@@ -237,6 +237,10 @@ html.mobile-message-menus [data-thread] .message-row * {
   -webkit-touch-callout: none !important;
 }
 
+html.mobile-message-menus [data-thread] .message-options {
+  display: none;
+}
+
 .message-hold-target {
   position: relative;
   isolation: isolate;
