@@ -15,10 +15,22 @@ export function isMobileMessageDevice() {
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const holdFeedback = new WeakMap();
 
-export function animateMessageHold(message, point) {
-  if (!isMobileMessageDevice() || reducedMotion.matches) return;
+function clearHoldFeedback(bubble, motion) {
+  motion.animations.forEach(animation => animation.cancel());
+  motion.layer.remove();
+  if (holdFeedback.get(bubble) === motion) {
+    bubble.classList.remove("message-hold-target");
+    holdFeedback.delete(bubble);
+  }
+}
+
+export function beginMessageHold(message, point) {
+  if (!isMobileMessageDevice() || reducedMotion.matches || point?.target?.closest(OPTIONS_SELECTOR)) return;
   const bubble = message?.querySelector("article");
-  if (!bubble || typeof bubble.animate !== "function" || holdFeedback.has(bubble)) return;
+  if (!bubble || typeof bubble.animate !== "function") return;
+  const previous = holdFeedback.get(bubble);
+  const initialTransform = previous ? getComputedStyle(bubble).transform : "scale(1)";
+  if (previous) clearHoldFeedback(bubble, previous);
 
   const bounds = bubble.getBoundingClientRect();
   const x = Math.max(0, Math.min(bounds.width, (point?.x ?? bounds.left + bounds.width / 2) - bounds.left));
@@ -36,26 +48,56 @@ export function animateMessageHold(message, point) {
   layer.append(wave);
   bubble.classList.add("message-hold-target");
   bubble.append(layer);
-  const animations = [
+  const motion = { phase: "press", layer, wave, animations: [
     wave.animate([
-      { transform: "scale(0)", opacity: 0.3 },
-      { transform: "scale(1)", opacity: 0.16, offset: 0.65 },
-      { transform: "scale(1)", opacity: 0 },
-    ], { duration: 520, easing: "cubic-bezier(.2,.8,.2,1)" }),
+      { transform: "scale(0)", opacity: 0.06 },
+      { transform: "scale(1)", opacity: 0.16 },
+    ], { duration: 520, easing: "cubic-bezier(.2,0,.2,1)", fill: "forwards" }),
     bubble.animate([
+      { transform: initialTransform },
+      { transform: "scale(.975)" },
+    ], { duration: 520, easing: "cubic-bezier(.2,0,.2,1)", fill: "forwards" }),
+  ] };
+  holdFeedback.set(bubble, motion);
+}
+
+function finishMessageHold(message, confirmed) {
+  const bubble = message?.querySelector("article"), motion = bubble && holdFeedback.get(bubble);
+  if (!motion || motion.phase !== "press") return;
+  if (reducedMotion.matches) { clearHoldFeedback(bubble, motion); return; }
+  // Continue from the currently rendered frame instead of restarting at full size.
+  const transform = getComputedStyle(bubble).transform;
+  const waveStyle = getComputedStyle(motion.wave);
+  const waveTransform = waveStyle.transform, opacity = waveStyle.opacity;
+  motion.animations.forEach(animation => animation.cancel());
+  motion.phase = confirmed ? "confirmed" : "canceled";
+  motion.animations = [
+    motion.wave.animate([
+      { transform: waveTransform, opacity },
+      { transform: "scale(1)", opacity: 0 },
+    ], { duration: confirmed ? 240 : 160, easing: "ease-out" }),
+    bubble.animate(confirmed ? [
+      { transform },
+      { transform: "scale(1.008)", offset: 0.65 },
       { transform: "scale(1)" },
-      { transform: "scale(.97)", offset: 0.2 },
-      { transform: "scale(1.025)", offset: 0.55 },
-      { transform: "scale(.995)", offset: 0.8 },
+    ] : [
+      { transform },
       { transform: "scale(1)" },
-    ], { duration: 380, easing: "ease-out" }),
+    ], { duration: confirmed ? 260 : 180, easing: "cubic-bezier(.22,.61,.36,1)" }),
   ];
-  holdFeedback.set(bubble, animations);
-  Promise.allSettled(animations.map(animation => animation.finished)).then(() => {
-    layer.remove();
-    bubble.classList.remove("message-hold-target");
-    holdFeedback.delete(bubble);
+  Promise.allSettled(motion.animations.map(animation => animation.finished)).then(() => {
+    if (holdFeedback.get(bubble) === motion) clearHoldFeedback(bubble, motion);
   });
+}
+
+export function confirmMessageHold(message, point) {
+  const bubble = message?.querySelector("article");
+  if (bubble && !holdFeedback.has(bubble)) beginMessageHold(message, point);
+  finishMessageHold(message, true);
+}
+
+export function cancelMessageHold(message) {
+  finishMessageHold(message, false);
 }
 
 function updateMobileSelection() {
@@ -89,7 +131,7 @@ function openMessageMenu(event) {
   if (isMobileMessageDevice()) window.getSelection()?.removeAllRanges();
 
   if (optionsButton.getAttribute("aria-expanded") !== "true") {
-    animateMessageHold(message, { x: event.clientX, y: event.clientY });
+    confirmMessageHold(message, event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : void 0);
     optionsButton.click();
   }
 }

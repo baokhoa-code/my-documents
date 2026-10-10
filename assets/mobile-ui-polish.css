@@ -240,6 +240,7 @@ html.mobile-message-menus [data-thread] .message-row * {
 .message-hold-target {
   position: relative;
   isolation: isolate;
+  will-change: transform;
 }
 
 .message-hold-ripple-layer {
