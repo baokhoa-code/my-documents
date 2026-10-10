@@ -134,8 +134,55 @@ var Ae=80;function je(e,t,n){let r=Math.round(n?.width??e),i=Math.round(n?.heigh
     zoomOut ? null : O.jsx('path', { d: 'M10.5 7.5v6' }),
   ] });
 }
+function imagePreviewFilmstrip(images) {
+  const entries = images.map((image, index) => {
+    const timestamp = Number(image.ts), date = new Date(timestamp);
+    const dated = Number.isFinite(timestamp) && timestamp > 0 && !Number.isNaN(date.getTime());
+    return { image, index, timestamp: dated ? timestamp : Infinity,
+      day: dated ? `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}` : image.id ? 'unknown' : 'pending',
+      label: dated ? Ze(timestamp) : image.id ? 'Không rõ ngày' : 'Ảnh đang chọn' };
+  }).sort((first, second) => first.timestamp - second.timestamp || first.index - second.index);
+  const groups = new Map();
+  for (const entry of entries) {
+    if (!groups.has(entry.day)) groups.set(entry.day, { day: entry.day, label: entry.label, entries: [] });
+    groups.get(entry.day).entries.push(entry);
+  }
+  return { order: entries.map(entry => entry.index), groups: [...groups.values()] };
+}
+function ImageRailChevron({ down = false }) {
+  return O.jsx('svg', { width: 20, height: 20, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': true,
+    children: O.jsx('path', { d: down ? 'm6 9 6 6 6-6' : 'm6 15 6-6 6 6' }) });
+}
+function ImageThumbnailRail({ groups, index, onIndex, onStep }) {
+  const strip = S.useRef(null);
+  S.useLayoutEffect(() => {
+    const list = strip.current, selected = list?.querySelector(`[data-image-index="${index}"]`);
+    if (!list || !selected) return;
+    if (document.activeElement?.classList.contains('image-filmstrip-thumb') && list.contains(document.activeElement)) selected.focus({ preventScroll: true });
+    function revealSelected() {
+      const viewport = list.getBoundingClientRect(), item = selected.getBoundingClientRect();
+      if (item.top < viewport.top) list.scrollTop += item.top - viewport.top - 8;
+      else if (item.bottom > viewport.bottom) list.scrollTop += item.bottom - viewport.bottom + 8;
+    }
+    revealSelected();
+    const observer = new ResizeObserver(revealSelected);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [groups, index]);
+  return O.jsxs('aside', { className: 'image-viewer-sidebar', 'aria-label': 'Danh sách ảnh', children: [
+    O.jsxs('div', { className: 'image-filmstrip-controls', role: 'group', 'aria-label': 'Chuyển ảnh', children: [
+      O.jsx('button', { type: 'button', className: 'image-filmstrip-step', onClick: () => onStep(-1), 'aria-label': 'Ảnh trước', title: 'Ảnh trước', children: O.jsx(ImageRailChevron, {}) }),
+      O.jsx('button', { type: 'button', className: 'image-filmstrip-step', onClick: () => onStep(1), 'aria-label': 'Ảnh sau', title: 'Ảnh sau', children: O.jsx(ImageRailChevron, { down: true }) }),
+    ] }),
+    O.jsx('div', { ref: strip, className: 'image-filmstrip', children: groups.map(group => O.jsxs('section', { className: 'image-filmstrip-group', children: [
+      O.jsx('h2', { className: 'image-filmstrip-date', children: group.label }),
+      ...group.entries.map(entry => O.jsx('button', { type: 'button', className: 'image-filmstrip-thumb', 'data-image-index': entry.index, 'aria-label': `Chuyển tới ảnh ${entry.image.name || entry.index + 1}`, 'aria-current': entry.index === index ? 'true' : void 0, tabIndex: entry.index === index ? 0 : -1, title: entry.image.name || `Ảnh ${entry.index + 1}`, onClick: () => onIndex(entry.index), children: O.jsx('img', { src: entry.image.src, alt: '', draggable: false, loading: 'lazy', decoding: 'async' }) }, entry.image.id || entry.index)),
+    ] }, group.day)) }),
+  ] });
+}
 function Md({ images, index, onClose: requestedClose, onIndex }) {
   const image = images[index];
+  const filmstrip = S.useMemo(() => imagePreviewFilmstrip(images), [images]);
   const stage = S.useRef(null), dialog = S.useRef(null), picture = S.useRef(null);
   const onClose = useOverlayDismiss(dialog, requestedClose, 'viewer');
   const { toast } = Be();
@@ -144,6 +191,12 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
   const pointers = S.useRef(new Map()), gesture = S.useRef(null), lastTap = S.useRef(null);
   const pinchFrame = S.useRef(0);
   const [interacting, setInteracting] = S.useState(false), [downloading, setDownloading] = S.useState(false);
+  function stepImage(direction) {
+    const order = filmstrip.order;
+    if (order.length < 2) return;
+    const position = order.indexOf(index);
+    onIndex(order[(position + direction + order.length) % order.length]);
+  }
   function applyView(next) { viewRef.current = next; setView(next); }
   function resetView() { applyView({ scale: Ed, x: 0, y: 0 }); }
   function stagePoint(clientX, clientY) {
@@ -269,7 +322,7 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
     if (!canceled && !active.suppressSwipe && pointer.type === 'touch' && active.view.scale <= Ed) {
       if (dy > 72 && Math.abs(dy) > 1.2 * Math.abs(dx)) { onClose(); return; }
       if (Math.abs(dx) > 56 && Math.abs(dx) > 1.2 * Math.abs(dy) && images.length > 1) {
-        onIndex(dx < 0 ? (index + 1) % images.length : (index - 1 + images.length) % images.length); return;
+        stepImage(dx < 0 ? 1 : -1); return;
       }
     }
     if (viewRef.current.scale <= Ed) applyView(active.view);
@@ -310,13 +363,13 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
     function keyDown(event) {
       if (dialog.current?.dataset.overlayState === 'closing') { event.preventDefault(); return; }
       if (event.key === 'Escape') { event.preventDefault(); onClose(); }
-      else if (event.key === 'ArrowLeft' && images.length > 1) { event.preventDefault(); onIndex((index - 1 + images.length) % images.length); }
-      else if (event.key === 'ArrowRight' && images.length > 1) { event.preventDefault(); onIndex((index + 1) % images.length); }
+      else if ((event.key === 'ArrowLeft' || event.key === 'ArrowUp') && images.length > 1) { event.preventDefault(); stepImage(-1); }
+      else if ((event.key === 'ArrowRight' || event.key === 'ArrowDown') && images.length > 1) { event.preventDefault(); stepImage(1); }
       else if (event.key === '+' || event.key === '=') { event.preventDefault(); zoomAt(viewRef.current.scale + Od); }
       else if (event.key === '-' || event.key === '_') { event.preventDefault(); zoomAt(viewRef.current.scale - Od); }
       else if (event.key === '0') { event.preventDefault(); resetView(); }
       else if (event.key === 'Tab') {
-        const controls = [...dialog.current.querySelectorAll('button:not(:disabled), [tabindex]:not([tabindex="-1"])')].filter(element => element.getClientRects().length);
+        const controls = [...dialog.current.querySelectorAll('button:not(:disabled), [tabindex]:not([tabindex="-1"])')].filter(element => element.tabIndex >= 0 && element.getClientRects().length);
         const first = controls[0], last = controls[controls.length - 1];
         if (!controls.includes(document.activeElement)) { event.preventDefault(); (event.shiftKey ? last : first)?.focus(); }
         else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
@@ -325,7 +378,7 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
     }
     window.addEventListener('keydown', keyDown);
     return () => window.removeEventListener('keydown', keyDown);
-  }, [index, images.length, onClose, onIndex]);
+  }, [index, filmstrip, onClose, onIndex]);
   async function download() {
     if (!image || downloading) return;
     setDownloading(true);
@@ -335,20 +388,23 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
   if (!image) return null;
   return O.jsxs('div', { ref: dialog, className: 'image-viewer fixed inset-0 z-50 flex flex-col bg-bg/95', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Xem ảnh', children: [
     O.jsxs('header', { className: 'image-viewer-header flex shrink-0 items-center justify-between gap-3 px-4 py-3 text-fg', children: [
-      O.jsxs('p', { className: 'image-viewer-title min-w-0 truncate text-sm font-medium', children: [O.jsxs('span', { className: 'image-counter', children: [index + 1, ' / ', images.length] }), O.jsx('span', { className: 'image-filename', children: image.name })] }),
+      O.jsxs('p', { className: 'image-viewer-title min-w-0 truncate text-sm font-medium', children: [O.jsxs('span', { className: 'image-counter', children: [filmstrip.order.indexOf(index) + 1, ' / ', images.length] }), O.jsx('span', { className: 'image-filename', children: image.name })] }),
       O.jsxs('div', { className: 'flex items-center gap-1', children: [
         O.jsx('button', { type: 'button', className: 'grid size-11 place-items-center rounded-md text-fg hover:bg-bar disabled:opacity-40', onClick: () => void download(), disabled: downloading, 'aria-label': 'Tải ảnh', children: O.jsx(se, { className: 'size-5' }) }),
         O.jsx('button', { type: 'button', className: 'grid size-11 place-items-center rounded-md text-fg hover:bg-bar', onClick: onClose, 'aria-label': 'Đóng', children: O.jsx(Se, { className: 'size-5' }) }),
       ] }),
     ] }),
-    O.jsxs('div', { ref: stage, className: `image-stage relative min-h-0 flex-1 overflow-hidden ${interacting ? 'cursor-grabbing' : view.scale > Ed ? 'cursor-grab' : 'cursor-zoom-in'}`, onPointerDown: pointerDown, onPointerMove: pointerMove, onPointerUp: event => pointerEnd(event), onPointerCancel: event => pointerEnd(event, true), onLostPointerCapture: event => pointerEnd(event, true), style: { touchAction: 'none' }, children: [
-      images.length > 1 ? O.jsx('button', { type: 'button', className: 'image-viewer-nav image-viewer-prev absolute top-1/2 left-2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-bar text-fg', onClick: () => onIndex((index - 1 + images.length) % images.length), onPointerDown: event => event.stopPropagation(), 'aria-label': 'Ảnh trước', children: O.jsx(ne, { className: 'size-5' }) }) : null,
-      O.jsx('div', { className: 'image-transform-layer flex h-full w-full items-center justify-center will-change-transform', style: { transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, transformOrigin: 'center center' }, children: O.jsx('img', { ref: picture, src: image.src, alt: image.name, draggable: false, className: 'max-h-full max-w-full select-none rounded-lg object-contain' }) }),
-      images.length > 1 ? O.jsx('button', { type: 'button', className: 'image-viewer-nav image-viewer-next absolute top-1/2 right-2 z-10 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-bar text-fg', onClick: () => onIndex((index + 1) % images.length), onPointerDown: event => event.stopPropagation(), 'aria-label': 'Ảnh sau', children: O.jsx(re, { className: 'size-5' }) }) : null,
-    ] }),
-    O.jsxs('div', { className: 'image-viewer-tools', role: 'group', 'aria-label': 'Thu phóng ảnh', children: [
-      O.jsx('button', { type: 'button', className: 'image-zoom-button', disabled: view.scale >= Dd, onClick: () => zoomAt(viewRef.current.scale + Od), 'aria-label': 'Phóng to', title: 'Phóng to', children: O.jsx(ImageZoomIcon, {}) }),
-      O.jsx('button', { type: 'button', className: 'image-zoom-button', disabled: view.scale <= Ed, onClick: () => zoomAt(viewRef.current.scale - Od), 'aria-label': 'Thu nhỏ', title: 'Thu nhỏ', children: O.jsx(ImageZoomIcon, { zoomOut: true }) }),
+    O.jsxs('div', { className: 'image-viewer-body', children: [
+      O.jsxs('div', { className: 'image-viewer-main', children: [
+        O.jsxs('div', { ref: stage, className: `image-stage relative min-h-0 flex-1 overflow-hidden ${interacting ? 'cursor-grabbing' : view.scale > Ed ? 'cursor-grab' : 'cursor-zoom-in'}`, onPointerDown: pointerDown, onPointerMove: pointerMove, onPointerUp: event => pointerEnd(event), onPointerCancel: event => pointerEnd(event, true), onLostPointerCapture: event => pointerEnd(event, true), style: { touchAction: 'none' }, children: [
+          O.jsx('div', { className: 'image-transform-layer flex h-full w-full items-center justify-center will-change-transform', style: { transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`, transformOrigin: 'center center' }, children: O.jsx('img', { ref: picture, src: image.src, alt: image.name, draggable: false, className: 'max-h-full max-w-full select-none rounded-lg object-contain' }) }),
+        ] }),
+        O.jsxs('div', { className: 'image-viewer-tools', role: 'group', 'aria-label': 'Thu phóng ảnh', children: [
+          O.jsx('button', { type: 'button', className: 'image-zoom-button', disabled: view.scale >= Dd, onClick: () => zoomAt(viewRef.current.scale + Od), 'aria-label': 'Phóng to', title: 'Phóng to', children: O.jsx(ImageZoomIcon, {}) }),
+          O.jsx('button', { type: 'button', className: 'image-zoom-button', disabled: view.scale <= Ed, onClick: () => zoomAt(viewRef.current.scale - Od), 'aria-label': 'Thu nhỏ', title: 'Thu nhỏ', children: O.jsx(ImageZoomIcon, { zoomOut: true }) }),
+        ] }),
+      ] }),
+      images.length > 1 ? O.jsx(ImageThumbnailRail, { groups: filmstrip.groups, index, onIndex, onStep: stepImage }) : null,
     ] }),
   ] });
 }
