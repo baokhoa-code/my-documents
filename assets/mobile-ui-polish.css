@@ -298,6 +298,7 @@ html.mobile-message-menus [data-thread] .message-row * {
   top: 0;
   left: 0;
   transform-origin: top left;
+  transition-property: none;
 }
 
 .message-menu-preview {
@@ -728,6 +729,11 @@ html.mobile-message-menus [data-thread] .message-row * {
 [data-overlay-state="closing"],
 [data-overlay-state="closed"] {
   pointer-events: none !important;
+}
+
+.message-menu-overlay[data-overlay-state="closing"],
+.message-menu-overlay[data-overlay-state="closed"] {
+  pointer-events: auto !important;
 }
 
 .overlay-menu {

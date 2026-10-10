@@ -3,6 +3,28 @@ import { createMessageSnapshot, getMessageHoldBounds, hideMessageSource, release
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
 const move = (x, y, scale = 1) => `translate(${x}px, ${y}px) scale(${scale})`;
+const backgroundLocks = new WeakMap();
+
+function lockBackground(message) {
+  const background = message.closest("#root");
+  if (!background) return () => {};
+  let lock = backgroundLocks.get(background);
+  if (!lock) {
+    lock = { inert: background.inert, owners: 0 };
+    backgroundLocks.set(background, lock);
+  }
+  lock.owners++;
+  background.inert = true;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--lock.owners === 0) {
+      background.inert = lock.inert;
+      backgroundLocks.delete(background);
+    }
+  };
+}
 
 export function createMessageMenuPresentation(root, menu, message) {
   const source = message.querySelector("article");
@@ -18,6 +40,7 @@ export function createMessageMenuPresentation(root, menu, message) {
   preview.style.transform = move(sourceBounds.left, sourceBounds.top, sourceBounds.width / sourceWidth);
   backdrop.style.opacity = "0";
   menu.style.opacity = "0";
+  const restoreBackground = lockBackground(message);
 
   let animations = [], revision = 0, disposed = false, closing = false, opened = false, resizeFrame = 0;
   let previousLayout = "";
@@ -71,7 +94,8 @@ export function createMessageMenuPresentation(root, menu, message) {
     const from = current(), target = layout(), token = ++revision;
     cancelAnimations();
     closing = phase === "exit";
-    root.inert = closing;
+    // Keep the backdrop interactive until unmount so closing taps cannot reach the app.
+    menu.inert = closing;
     root.dataset.overlayState = closing ? "closing" : "opening";
     previousLayout = JSON.stringify(target);
     const duration = closing ? 220 : 280;
@@ -120,6 +144,7 @@ export function createMessageMenuPresentation(root, menu, message) {
       window.removeEventListener("resize", resize);
       window.visualViewport?.removeEventListener("resize", resize);
       window.visualViewport?.removeEventListener("scroll", resize);
+      restoreBackground();
       restoreSource();
       preview.replaceChildren();
     },
