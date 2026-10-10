@@ -2,6 +2,7 @@ const SCROLL_AWAY_THRESHOLD = 64;
 const KEYBOARD_HEIGHT_THRESHOLD = 80;
 
 let thread = null;
+let updateFrame = 0;
 
 const button = document.createElement("button");
 button.type = "button";
@@ -35,14 +36,17 @@ function isAwayFromLatest() {
   return remaining > SCROLL_AWAY_THRESHOLD;
 }
 
-function updateButton() {
-  const modalIsOpen = Boolean(
-    document.querySelector('[role="dialog"][aria-modal="true"]'),
+function modalIsVisible() {
+  return [...document.querySelectorAll('[aria-modal="true"]')].some(modal =>
+    modal.getClientRects().length > 0 && getComputedStyle(modal).visibility !== "hidden",
   );
+}
+
+function updateButton() {
   if (
     !thread ||
     !thread.isConnected ||
-    modalIsOpen ||
+    modalIsVisible() ||
     keyboardIsOpen() ||
     !isAwayFromLatest()
   ) {
@@ -51,6 +55,7 @@ function updateButton() {
   }
 
   const rect = thread.getBoundingClientRect();
+  if (!rect.width || !rect.height) { button.hidden = true; return; }
   button.style.left = `${rect.left + rect.width / 2}px`;
   button.style.top = `${Math.max(rect.top + 12, rect.bottom - 60)}px`;
   button.hidden = false;
@@ -63,8 +68,10 @@ function bindThread(nextThread) {
   }
 
   thread?.removeEventListener("scroll", updateButton);
+  resizeObserver?.disconnect();
   thread = nextThread;
   thread?.addEventListener("scroll", updateButton, { passive: true });
+  if (thread) resizeObserver?.observe(thread);
   updateButton();
 }
 
@@ -72,13 +79,25 @@ function findThread() {
   bindThread(document.querySelector("[data-thread]"));
 }
 
+function scheduleUpdate() {
+  if (updateFrame) return;
+  updateFrame = requestAnimationFrame(() => { updateFrame = 0; findThread(); });
+}
+
 button.addEventListener("click", () => {
   if (!thread) return;
   thread.scrollTo({ top: thread.scrollHeight, behavior: "smooth" });
 });
 
-const observer = new MutationObserver(() => requestAnimationFrame(findThread));
-observer.observe(document.getElementById("root"), { childList: true, subtree: true });
+const resizeObserver = typeof ResizeObserver === "function" ? new ResizeObserver(scheduleUpdate) : null;
+const observer = new MutationObserver(records => {
+  if (records.some(record => !button.contains(record.target))) scheduleUpdate();
+});
+// Native dialogs live outside React's root and toggle visibility without being removed.
+observer.observe(document.body, {
+  childList: true, subtree: true, attributes: true,
+  attributeFilter: ["hidden", "aria-modal", "aria-hidden", "data-overlay-state"],
+});
 
 window.addEventListener("resize", updateButton, { passive: true });
 window.addEventListener("orientationchange", updateButton, { passive: true });

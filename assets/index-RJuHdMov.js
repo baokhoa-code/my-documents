@@ -74,12 +74,22 @@ function ke({ value, sending, pendingImages, pendingFiles, onChange, onSend, onA
   function keyDown(event) {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      if (canSend) onSend();
+      if (canSend) send();
     }
   }
   function attach(event) {
     if (event.target.files?.length) onAttach(event.target.files);
     event.target.value = '';
+  }
+  function keepInputFocus(event) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    textarea.current?.focus({ preventScroll: true });
+  }
+  function send() {
+    if (!canSend) return;
+    textarea.current?.focus({ preventScroll: true });
+    onSend();
   }
   return O.jsxs('div', {
     className: 'app-composer shrink-0 border-t border-line bg-bar pb-[max(0.4rem,env(safe-area-inset-bottom))]',
@@ -88,7 +98,7 @@ function ke({ value, sending, pendingImages, pendingFiles, onChange, onSend, onA
         O.jsx('button', { type: 'button', className: 'composer-attach grid size-11 shrink-0 place-items-center rounded-md text-muted hover:bg-bg hover:text-fg', onClick: () => fileInput.current?.click(), 'aria-label': 'Đính kèm', children: O.jsx(D, { className: 'size-5' }) }),
         O.jsx('input', { ref: fileInput, type: 'file', accept: 'image/*,*/*', multiple: true, hidden: true, onChange: attach }),
         O.jsx('textarea', { ref: textarea, value, onChange: event => onChange(event.target.value), onKeyDown: keyDown, rows: 1, placeholder: 'Nhập', className: 'composer-input field min-h-11 flex-1 resize-none bg-transparent px-2 py-2.5 text-base text-fg outline-none placeholder:text-subtle' }),
-        O.jsx('button', { type: 'button', disabled: !canSend, onClick: onSend, className: 'composer-send grid size-11 shrink-0 place-items-center rounded-full text-accent disabled:text-subtle', 'aria-label': 'Gửi', children: O.jsx(ve, { className: 'size-5' }) }),
+        O.jsx('button', { type: 'button', disabled: !canSend, onPointerDown: keepInputFocus, onMouseDown: keepInputFocus, onClick: send, className: 'composer-send grid size-11 shrink-0 place-items-center rounded-full text-accent disabled:text-subtle', 'aria-label': 'Gửi', children: O.jsx(ve, { className: 'size-5' }) }),
       ] }),
       count > 0 ? O.jsxs('div', { className: 'composer-pending', children: [
         O.jsxs('div', { className: 'composer-pending-header text-xs', children: [
