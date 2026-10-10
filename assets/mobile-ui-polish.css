@@ -625,7 +625,15 @@
 
 .image-viewer {
   background: rgba(3, 5, 8, 0.985);
-  animation: viewer-enter 180ms ease-out both;
+}
+
+[data-overlay-state="closing"],
+[data-overlay-state="closed"] {
+  pointer-events: none !important;
+}
+
+.overlay-menu {
+  transform-origin: top center;
 }
 
 .image-viewer-header {

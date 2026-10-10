@@ -1,3 +1,5 @@
+import { animateOverlay, cancelOverlayMotion } from "./overlay-motion.js?v=1";
+
 const FIREBASE_CONFIG_URL = "./hub/firebase-config.json";
 const FIREBASE_PATH = "hub/mfaAccounts";
 const CACHE_KEY = "my-documents-mfa-accounts-v2";
@@ -359,7 +361,7 @@ async function copyValue(value, label, button) {
 
 function startTicker() {
   clearInterval(tickTimer);
-  if (modal.hidden || currentView !== "list") return;
+  if (modal.hidden || modal.dataset.overlayState === "closing" || currentView !== "list") return;
   async function tick() {
     for (const card of body.querySelectorAll("[data-mfa-account]")) {
       const account = accounts[card.dataset.mfaAccount];
@@ -622,33 +624,43 @@ function renderSetup(existing = null) {
   platform.focus({ preventScroll: true });
 }
 
+let modalVersion = 0;
 async function openAuthenticator() {
+  const version = ++modalVersion;
   returnFocus = document.activeElement;
   modal.hidden = false;
+  modal.inert = false;
+  animateOverlay(modal, "enter", "dialog");
   currentView = "list";
   body.innerHTML = `<p class="mfa-help mfa-loading">Đang tải tài khoản…</p>`;
   modal.querySelector(".mfa-close").focus();
   try {
     await initializeSync();
     await fetchAccounts();
-    if (!modal.hidden && currentView === "list") renderList();
+    if (version === modalVersion && !modal.hidden && currentView === "list") renderList();
   } catch (error) {
-    if (modal.hidden) return;
+    if (version !== modalVersion || modal.hidden) return;
     renderList();
     showError(`${error instanceof Error ? error.message : "Không kết nối được Firebase."} Đang hiển thị dữ liệu lưu gần nhất.`);
   }
 }
 
 function closeAuthenticator() {
-  modal.hidden = true;
+  if (modal.hidden || modal.dataset.overlayState === "closing") return;
+  const version = ++modalVersion;
   clearInterval(tickTimer);
-  returnFocus?.focus?.();
+  animateOverlay(modal, "exit", "dialog").then(finished => {
+    if (!finished || version !== modalVersion) return;
+    modal.hidden = true;
+    cancelOverlayMotion(modal);
+    returnFocus?.focus?.({ preventScroll: true });
+  });
 }
 
 modal.querySelector(".mfa-close").addEventListener("click", closeAuthenticator);
 modal.addEventListener("click", (event) => event.target === modal && closeAuthenticator());
 window.addEventListener("keydown", (event) => {
-  if (modal.hidden) return;
+  if (modal.hidden || modal.dataset.overlayState === "closing") return;
   if (event.key === "Escape") { event.preventDefault(); closeAuthenticator(); }
   if (event.key !== "Tab") return;
   const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')].filter((element) => element.getClientRects().length);

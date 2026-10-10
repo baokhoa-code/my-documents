@@ -1,3 +1,5 @@
+import { animateOverlay, cancelOverlayMotion } from "./overlay-motion.js?v=1";
+
 const touchDevice = window.matchMedia("(hover: none) and (pointer: coarse)");
 const standalone = window.matchMedia("(display-mode: standalone)");
 const screenOrientation = window.screen?.orientation;
@@ -64,8 +66,10 @@ function updateOrientation() {
   if (nextBlocked === blocked) return;
   blocked = nextBlocked;
   document.documentElement.classList.toggle("is-mobile-landscape", blocked);
-  guard.hidden = !blocked;
   if (blocked) {
+    const wasHidden = guard.hidden;
+    guard.hidden = false;
+    animateOverlay(guard, "enter", "screen");
     // Cancel an unfinished image drag/pinch before covering it, without closing the preview.
     for (const event of activePointers.values()) {
       event.target.dispatchEvent(new PointerEvent("pointercancel", {
@@ -77,17 +81,22 @@ function updateOrientation() {
       }
     }
     activePointers.clear();
-    returnFocus = document.activeElement;
+    if (wasHidden) returnFocus = document.activeElement;
     returnFocus?.blur?.();
     blockAppChildren();
     guard.focus({ preventScroll: true });
   } else {
-    for (const [element, inert] of previousInert) element.inert = inert;
-    previousInert.clear();
-    if (returnFocus?.isConnected && !returnFocus.closest("[inert]") && returnFocus.getClientRects().length) {
-      returnFocus.focus({ preventScroll: true });
-    }
-    returnFocus = null;
+    animateOverlay(guard, "exit", "screen").then(finished => {
+      if (!finished || blocked) return;
+      guard.hidden = true;
+      cancelOverlayMotion(guard);
+      for (const [element, inert] of previousInert) element.inert = inert;
+      previousInert.clear();
+      if (returnFocus?.isConnected && !returnFocus.closest("[inert]") && returnFocus.getClientRects().length) {
+        returnFocus.focus({ preventScroll: true });
+      }
+      returnFocus = null;
+    });
   }
 }
 
@@ -111,11 +120,11 @@ function orientationChanged() {
 }
 
 // Portals (image preview and account manager) remain mounted but cannot be used sideways.
-new MutationObserver(() => { if (blocked) blockAppChildren(); })
+new MutationObserver(() => { if (!guard.hidden) blockAppChildren(); })
   .observe(document.body, { childList: true });
 
 function stopLandscapeInteraction(event) {
-  if (!blocked) return;
+  if (guard.hidden) return;
   if (event.cancelable) event.preventDefault();
   event.stopImmediatePropagation();
 }
