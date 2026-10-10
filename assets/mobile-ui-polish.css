@@ -260,6 +260,51 @@ html.mobile-message-menus [data-thread] .message-row * {
   pointer-events: none;
 }
 
+.message-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  overflow: hidden;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.message-menu-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.76);
+}
+
+.message-menu-preview,
+.message-menu-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
+}
+
+.message-menu-preview {
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: 20px 20px 6px 20px;
+}
+
+.message-menu-panel {
+  border-radius: 16px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  transform-origin: top right;
+}
+
+.message-menu-panel > button {
+  min-height: 46px;
+}
+
 .message-bubble,
 .media-message > article > div,
 .media-message > div {

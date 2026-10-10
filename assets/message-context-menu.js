@@ -50,8 +50,9 @@ export function beginMessageHold(message, point) {
   bubble.append(layer);
   const motion = { phase: "press", layer, wave, animations: [
     wave.animate([
-      { transform: "scale(0)", opacity: 0.06 },
-      { transform: "scale(1)", opacity: 0.16 },
+      { transform: "scale(0)", opacity: 0.06, offset: 0 },
+      { transform: "scale(.85)", opacity: 0.1, offset: 0.7 },
+      { transform: "scale(1)", opacity: 0, offset: 1 },
     ], { duration: 520, easing: "cubic-bezier(.2,0,.2,1)", fill: "forwards" }),
     bubble.animate([
       { transform: initialTransform },
@@ -61,43 +62,34 @@ export function beginMessageHold(message, point) {
   holdFeedback.set(bubble, motion);
 }
 
-function finishMessageHold(message, confirmed) {
+export function releaseMessageHold(message) {
   const bubble = message?.querySelector("article"), motion = bubble && holdFeedback.get(bubble);
-  if (!motion || motion.phase !== "press") return;
-  if (reducedMotion.matches) { clearHoldFeedback(bubble, motion); return; }
-  // Continue from the currently rendered frame instead of restarting at full size.
-  const transform = getComputedStyle(bubble).transform;
-  const waveStyle = getComputedStyle(motion.wave);
-  const waveTransform = waveStyle.transform, opacity = waveStyle.opacity;
-  motion.animations.forEach(animation => animation.cancel());
-  motion.phase = confirmed ? "confirmed" : "canceled";
-  motion.animations = [
-    motion.wave.animate([
-      { transform: waveTransform, opacity },
-      { transform: "scale(1)", opacity: 0 },
-    ], { duration: confirmed ? 240 : 160, easing: "ease-out" }),
-    bubble.animate(confirmed ? [
-      { transform },
-      { transform: "scale(1.008)", offset: 0.65 },
-      { transform: "scale(1)" },
-    ] : [
-      { transform },
-      { transform: "scale(1)" },
-    ], { duration: confirmed ? 260 : 180, easing: "cubic-bezier(.22,.61,.36,1)" }),
-  ];
-  Promise.allSettled(motion.animations.map(animation => animation.finished)).then(() => {
-    if (holdFeedback.get(bubble) === motion) clearHoldFeedback(bubble, motion);
-  });
+  if (motion) clearHoldFeedback(bubble, motion);
 }
 
 export function confirmMessageHold(message, point) {
   const bubble = message?.querySelector("article");
   if (bubble && !holdFeedback.has(bubble)) beginMessageHold(message, point);
-  finishMessageHold(message, true);
+  const motion = bubble && holdFeedback.get(bubble);
+  if (motion?.phase === "press") motion.phase = "confirmed";
 }
 
 export function cancelMessageHold(message) {
-  finishMessageHold(message, false);
+  const bubble = message?.querySelector("article"), motion = bubble && holdFeedback.get(bubble);
+  if (!motion || motion.phase === "canceled") return;
+  if (reducedMotion.matches) { clearHoldFeedback(bubble, motion); return; }
+  const transform = getComputedStyle(bubble).transform;
+  const waveStyle = getComputedStyle(motion.wave);
+  const waveTransform = waveStyle.transform, opacity = waveStyle.opacity;
+  motion.animations.forEach(animation => animation.cancel());
+  motion.phase = "canceled";
+  motion.animations = [
+    motion.wave.animate([{ transform: waveTransform, opacity }, { transform: waveTransform, opacity: 0 }], { duration: 160, easing: "ease-out" }),
+    bubble.animate([{ transform }, { transform: "scale(1)" }], { duration: 180, easing: "cubic-bezier(.22,.61,.36,1)" }),
+  ];
+  Promise.allSettled(motion.animations.map(animation => animation.finished)).then(() => {
+    if (holdFeedback.get(bubble) === motion) clearHoldFeedback(bubble, motion);
+  });
 }
 
 function updateMobileSelection() {
