@@ -13,7 +13,7 @@ button.hidden = true;
 button.style.cssText = [
   "position:fixed",
   "z-index:60",
-  "transform:translateX(-50%)",
+  "transform:translateX(-100%)",
   "transition:opacity 150ms ease, transform 150ms ease",
 ].join(";");
 button.innerHTML = `
@@ -56,7 +56,7 @@ function updateButton() {
 
   const rect = thread.getBoundingClientRect();
   if (!rect.width || !rect.height) { button.hidden = true; return; }
-  button.style.left = `${rect.left + rect.width / 2}px`;
+  button.style.left = `${rect.right - 12}px`;
   button.style.top = `${Math.max(rect.top + 12, rect.bottom - 60)}px`;
   button.hidden = false;
 }
