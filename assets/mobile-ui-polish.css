@@ -339,7 +339,7 @@ html.mobile-message-menus [data-thread] .message-options {
   background: linear-gradient(145deg, #20344a, #1a2a3d);
 }
 
-.message-bubble-text > p:last-child {
+.message-bubble-text > p:last-of-type {
   margin-top: 5px;
   text-align: right;
 }
