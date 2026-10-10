@@ -370,11 +370,17 @@ function startTicker() {
 function credentialRow(label, value, mono = false) {
   const row = document.createElement("div");
   row.className = "mfa-credential";
-  const text = document.createElement("div");
+  const text = document.createElement("button");
+  text.type = "button";
+  text.className = "mfa-credential-content";
+  text.setAttribute("aria-label", `Bấm để sao chép ${label.toLowerCase()}`);
+  text.title = `Sao chép ${label.toLowerCase()}`;
+  text.disabled = !value;
+  text.addEventListener("click", () => copyValue(value, label, text));
   const caption = document.createElement("span");
   caption.className = "mfa-field-label";
   caption.textContent = label;
-  const content = document.createElement("p");
+  const content = document.createElement("span");
   content.className = `mfa-value${mono ? " mfa-mono" : ""}${value ? "" : " mfa-value-empty"}`;
   content.textContent = value || "Chưa thêm";
   text.append(caption, content);
@@ -396,7 +402,7 @@ function createAccountCard(account) {
   card.dataset.mfaAccount = account.id;
   card.innerHTML = `
     <div class="mfa-card-head">
-      <div class="mfa-account-heading"><span class="mfa-platform-icon" data-mfa-avatar></span><div><h3 data-mfa-platform></h3><span class="mfa-account-badge" data-mfa-badge></span></div></div>
+      <div class="mfa-account-heading"><span class="mfa-platform-icon" data-mfa-avatar></span><div><h3><button class="mfa-platform-value" data-mfa-platform type="button" aria-label="Sao chép nền tảng" title="Sao chép nền tảng"></button></h3><span class="mfa-account-badge" data-mfa-badge></span></div></div>
       <div class="mfa-actions"><button class="mfa-icon-button" type="button" data-mfa-edit aria-label="Sửa tài khoản" title="Sửa tài khoản">${icon("edit")}</button><button class="mfa-icon-button mfa-danger" type="button" data-mfa-delete aria-label="Xóa tài khoản" title="Xóa tài khoản">${icon("trash")}</button></div>
     </div>
     <div class="mfa-credentials" data-mfa-credentials></div>
@@ -407,6 +413,7 @@ function createAccountCard(account) {
     </div>
   `;
   card.querySelector("[data-mfa-platform]").textContent = account.platform;
+  card.querySelector("[data-mfa-platform]").addEventListener("click", (event) => copyValue(account.platform, "Nền tảng", event.currentTarget));
   card.querySelector("[data-mfa-avatar]").textContent = account.platform.slice(0, 1).toUpperCase();
   card.querySelector("[data-mfa-badge]").textContent = account.secret ? "Có MFA" : "Tài khoản";
   let colorIndex = 0;

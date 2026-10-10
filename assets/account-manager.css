@@ -35,6 +35,8 @@
 .mfa-card-head { gap: 8px; padding: 18px 16px 14px; }
 .mfa-account-heading > div { min-width: 0; }
 .mfa-account h3 { margin: 0; overflow-wrap: anywhere; font-size: 16px; font-weight: 700; line-height: 1.45; }
+.mfa-platform-value { max-width: 100%; background: transparent; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.mfa-platform-value:hover { color: var(--color-accent); }
 .mfa-account-badge { display: block; margin-top: 1px; font-size: 11px; font-weight: 500; color: var(--color-muted); }
 .mfa-platform-icon { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 12px; font-size: 18px; font-weight: 700; color: #80baff; background: #80baff17; }
 .mfa-platform-icon[data-color="1"] { color: #a3cea6; background: #a3cea617; }
@@ -44,8 +46,11 @@
 .mfa-credentials { padding: 0 16px 12px; }
 .mfa-credential { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 66px; padding: 10px 0; border-top: 1px solid var(--color-line); }
 .mfa-credential > div { min-width: 0; }
+.mfa-credential-content { flex: 1; min-width: 0; align-self: stretch; background: transparent; text-align: left; cursor: pointer; }
+.mfa-credential-content:hover:not(:disabled) .mfa-value { color: var(--color-accent); }
+.mfa-modal .mfa-credential-content:disabled { opacity: 1; }
 .mfa-field-label { display: block; font-size: 11px; font-weight: 500; line-height: 1.5; color: var(--color-muted); }
-.mfa-value { margin: 5px 0 0; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
+.mfa-value { display: block; margin: 5px 0 0; font-size: 14px; line-height: 1.55; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
 .mfa-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .mfa-value-empty { color: var(--color-muted); font-size: 13px; }
 .mfa-copy { width: 36px; height: 36px; }
