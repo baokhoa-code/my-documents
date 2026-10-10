@@ -131,6 +131,7 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
   const [view, setView] = S.useState({ scale: Ed, x: 0, y: 0 });
   const viewRef = S.useRef(view);
   const pointers = S.useRef(new Map()), gesture = S.useRef(null), lastTap = S.useRef(null);
+  const pinchFrame = S.useRef(0);
   const [interacting, setInteracting] = S.useState(false), [downloading, setDownloading] = S.useState(false);
   function applyView(next) { viewRef.current = next; setView(next); }
   function resetView() { applyView({ scale: Ed, x: 0, y: 0 }); }
@@ -144,10 +145,13 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
   }
   function zoomAt(nextScale, clientX, clientY) {
     const current = viewRef.current, scale = Ad(nextScale, Ed, Dd);
-    if (scale === current.scale) return;
-    const point = clientX == null ? { x: 0, y: 0 } : stagePoint(clientX, clientY);
-    // Keep the same image coordinate beneath the pointer as its scale changes.
-    applyView({ scale, x: point.x - (point.x - current.x) * scale / current.scale, y: point.y - (point.y - current.y) * scale / current.scale });
+    if (scale === current.scale && (scale > Ed || current.x === 0 && current.y === 0)) return;
+    if (scale <= Ed) resetView();
+    else {
+      const point = clientX == null ? { x: 0, y: 0 } : stagePoint(clientX, clientY);
+      // Keep the same image coordinate beneath the pointer while magnified.
+      applyView({ scale, x: point.x - (point.x - current.x) * scale / current.scale, y: point.y - (point.y - current.y) * scale / current.scale });
+    }
     const drag = gesture.current;
     if (drag?.kind === 'drag') {
       const pointer = pointers.current.get(drag.id);
@@ -169,8 +173,29 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
     setInteracting(true);
     return true;
   }
+  function updatePinch() {
+    const active = gesture.current;
+    if (active?.kind !== 'pinch') return;
+    const [first, second] = active.ids.map(id => pointers.current.get(id));
+    if (!first || !second) return;
+    const midpoint = stagePoint((first.x + second.x) / 2, (first.y + second.y) / 2);
+    const distance = Math.max(1, Math.hypot(second.x - first.x, second.y - first.y));
+    const scale = Ad(active.scale * distance / active.distance, Ed, Dd);
+    if (scale <= Ed) {
+      resetView();
+      // Re-anchor to the centered image so the same pinch can expand smoothly again.
+      active.scale = Ed; active.distance = distance;
+      active.imagePoint = midpoint;
+    } else applyView({ scale, x: midpoint.x - active.imagePoint.x * scale, y: midpoint.y - active.imagePoint.y * scale });
+  }
+  function flushPinch() {
+    if (!pinchFrame.current) return;
+    cancelAnimationFrame(pinchFrame.current); pinchFrame.current = 0;
+    updatePinch();
+  }
   function pointerDown(event) {
     if (event.button !== 0) return;
+    flushPinch();
     const pointer = { id: event.pointerId, type: event.pointerType, x: event.clientX, y: event.clientY };
     pointers.current.set(pointer.id, pointer);
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -191,12 +216,10 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
     pointers.current.set(pointer.id, pointer);
     const active = gesture.current;
     if (active?.kind === 'pinch') {
-      const [first, second] = active.ids.map(id => pointers.current.get(id));
-      if (!first || !second) return;
-      const midpoint = stagePoint((first.x + second.x) / 2, (first.y + second.y) / 2);
-      const distance = Math.hypot(second.x - first.x, second.y - first.y);
-      const scale = Ad(active.scale * distance / active.distance, Ed, Dd);
-      applyView({ scale, x: midpoint.x - active.imagePoint.x * scale, y: midpoint.y - active.imagePoint.y * scale });
+      // Both pointer positions must be current before rebasing at the minimum scale.
+      if (!pinchFrame.current) pinchFrame.current = requestAnimationFrame(() => {
+        pinchFrame.current = 0; updatePinch();
+      });
       return;
     }
     if (active?.kind !== 'drag' || active.id !== pointer.id) return;
@@ -210,6 +233,7 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
   function pointerEnd(event, canceled = false) {
     const pointer = pointers.current.get(event.pointerId);
     if (!pointer) return;
+    flushPinch();
     pointers.current.delete(pointer.id);
     const active = gesture.current;
     if (active?.kind === 'pinch') {
@@ -232,8 +256,10 @@ function Md({ images, index, onClose: requestedClose, onIndex }) {
     else lastTap.current = null;
   }
   S.useLayoutEffect(() => {
+    cancelAnimationFrame(pinchFrame.current); pinchFrame.current = 0;
     pointers.current.clear(); gesture.current = null; lastTap.current = null;
     resetView(); setInteracting(false);
+    return () => { cancelAnimationFrame(pinchFrame.current); pinchFrame.current = 0; };
   }, [index, image?.src]);
   S.useEffect(() => {
     const previousFocus = document.activeElement;
