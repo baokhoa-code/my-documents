@@ -75,6 +75,24 @@
     var(--color-surface);
 }
 
+html.mobile-message-menus body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+
+html.mobile-message-menus .app-header,
+html.mobile-message-menus .app-tabs {
+  background: #0f141b;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html.mobile-message-menus [data-thread] {
+  overflow-anchor: none;
+  overscroll-behavior-y: contain;
+}
+
 .app-header {
   min-height: 58px;
   padding-inline: 14px;

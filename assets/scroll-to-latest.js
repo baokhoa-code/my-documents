@@ -1,15 +1,9 @@
-import { isMobileMessageDevice } from "./message-context-menu.js?v=6";
+import { isChatKeyboardOpen } from "./chat-viewport.js?v=1";
 
 const SCROLL_AWAY_THRESHOLD = 64;
-const KEYBOARD_HEIGHT_THRESHOLD = 80;
 
 let thread = null;
 let updateFrame = 0;
-let keyboardWasOpen = false;
-let closedViewportHeight = window.visualViewport?.height ?? window.innerHeight;
-let scrollAfterKeyboard = false;
-let keyboardScrollTimer = 0;
-
 const button = document.createElement("button");
 button.type = "button";
 button.className = "grid size-11 place-items-center rounded-full border border-line bg-bubble text-accent shadow-lg";
@@ -31,48 +25,6 @@ button.innerHTML = `
 `;
 document.body.append(button);
 
-function keyboardIsOpen() {
-  const viewport = window.visualViewport;
-  if (!isMobileMessageDevice() || !viewport || Math.abs((viewport.scale ?? 1) - 1) > .01) return false;
-  const focused = document.activeElement;
-  const editing = focused?.matches("input, textarea") || focused?.isContentEditable;
-  const heightLost = Math.max(window.innerHeight - viewport.height, closedViewportHeight - viewport.height);
-  return heightLost > KEYBOARD_HEIGHT_THRESHOLD && Boolean(editing || keyboardWasOpen);
-}
-
-function scheduleKeyboardScroll() {
-  clearTimeout(keyboardScrollTimer);
-  keyboardScrollTimer = 0;
-  if (!scrollAfterKeyboard) return;
-  keyboardScrollTimer = setTimeout(() => {
-    keyboardScrollTimer = 0;
-    findThread();
-    if (!thread) { scrollAfterKeyboard = false; return; }
-    if (modalIsVisible() || keyboardIsOpen()) return;
-    requestAnimationFrame(() => {
-      if (!thread?.isConnected || modalIsVisible() || keyboardIsOpen()) return;
-      scrollAfterKeyboard = false;
-      thread.scrollTo({ top: thread.scrollHeight, behavior: "instant" });
-      updateButton();
-    });
-  }, 120);
-}
-
-function viewportChanged() {
-  if (isMobileMessageDevice() && Math.abs((window.visualViewport?.scale ?? 1) - 1) <= .01) {
-    const open = keyboardIsOpen();
-    if (open) {
-      scrollAfterKeyboard = false;
-    } else {
-      if (keyboardWasOpen) scrollAfterKeyboard = true;
-      closedViewportHeight = window.visualViewport?.height ?? window.innerHeight;
-    }
-    keyboardWasOpen = open;
-    scheduleKeyboardScroll();
-  }
-  scheduleUpdate();
-}
-
 function isAwayFromLatest() {
   if (!thread) return false;
   const remaining = thread.scrollHeight - thread.scrollTop - thread.clientHeight;
@@ -90,7 +42,7 @@ function updateButton() {
     !thread ||
     !thread.isConnected ||
     modalIsVisible() ||
-    keyboardIsOpen() ||
+    isChatKeyboardOpen() ||
     !isAwayFromLatest()
   ) {
     button.hidden = true;
@@ -127,7 +79,6 @@ function scheduleUpdate() {
   updateFrame = requestAnimationFrame(() => {
     updateFrame = 0;
     findThread();
-    if (scrollAfterKeyboard && !modalIsVisible()) scheduleKeyboardScroll();
   });
 }
 
@@ -146,11 +97,7 @@ observer.observe(document.body, {
   attributeFilter: ["hidden", "aria-modal", "aria-hidden", "data-overlay-state"],
 });
 
-window.addEventListener("resize", viewportChanged, { passive: true });
-window.addEventListener("orientationchange", viewportChanged, { passive: true });
-window.visualViewport?.addEventListener("resize", viewportChanged, { passive: true });
-window.visualViewport?.addEventListener("scroll", viewportChanged, { passive: true });
-document.addEventListener("focusin", viewportChanged);
-document.addEventListener("focusout", viewportChanged);
+window.addEventListener("chatviewportchange", scheduleUpdate);
+window.addEventListener("resize", scheduleUpdate, { passive: true });
 
 findThread();
