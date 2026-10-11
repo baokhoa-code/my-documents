@@ -81,6 +81,15 @@ html.mobile-message-menus body {
   width: 100%;
 }
 
+.app-viewport-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
 html.mobile-message-menus .app-header,
 html.mobile-message-menus .app-tabs {
   background: #0f141b;

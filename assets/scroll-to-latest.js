@@ -1,4 +1,4 @@
-import { isChatKeyboardOpen } from "./chat-viewport.js?v=1";
+import { isChatKeyboardOpen } from "./chat-viewport.js?v=2";
 
 const SCROLL_AWAY_THRESHOLD = 64;
 

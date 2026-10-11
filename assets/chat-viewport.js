@@ -16,6 +16,7 @@ export function installChatViewport(shell) {
   let closedHeight = viewport?.height ?? window.innerHeight;
   mediaHeight = closedHeight;
   const originalStyle = shell.getAttribute("style");
+  const body = shell.querySelector('.app-viewport-body');
 
   function update() {
     frame = 0;
@@ -48,13 +49,17 @@ export function installChatViewport(shell) {
     if (keyboardOpen && previous && height < previous.height) pendingLatest = false;
     const blocked = modalIsVisible();
 
-    // Compensate Safari's visual viewport pan without scrolling the document back
-    // against the browser. Header and tabs keep the same on-screen coordinates.
-    const values = { position: 'fixed', top: `${top}px`, left: `${left}px`,
-      width: `${width}px`, height: `${height}px`, maxWidth: '100%', overflow: 'hidden' };
+    // Safari moves fixed layers during keyboard presentation. Applying offsetTop
+    // to their parent a second time makes the header slide down and then back up.
+    // Keep the outer frame at the origin; reserve keyboard space in the body only.
+    const frameHeight = mobile ? mediaHeight : height;
+    const values = { position: 'fixed', top: mobile ? '0px' : `${top}px`, left: mobile ? '0px' : `${left}px`,
+      width: `${width}px`, height: `${frameHeight}px`, maxWidth: '100%', overflow: 'hidden' };
     for (const [property, value] of Object.entries(values)) {
       if (shell.style[property] !== value) shell.style[property] = value;
     }
+    const inset = `${Math.max(0, frameHeight - height)}px`;
+    if (body && body.style.marginBottom !== inset) body.style.marginBottom = inset;
     if (thread && !blocked) {
       if (pendingLatest) {
         thread.scrollTop = thread.scrollHeight;
@@ -84,5 +89,6 @@ export function installChatViewport(shell) {
     events.forEach(([target, type]) => target?.removeEventListener(type, schedule));
     if (originalStyle === null) shell.removeAttribute('style');
     else shell.setAttribute('style', originalStyle);
+    body?.style.removeProperty('margin-bottom');
   };
 }
