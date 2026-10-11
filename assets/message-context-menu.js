@@ -12,6 +12,13 @@ export function isMobileMessageDevice() {
   );
 }
 
+export function isMessageBubbleTarget(row, target) {
+  if (!(target instanceof Element) || !row?.contains(target)) return false;
+  const article = row.querySelector('article');
+  const bubble = article?.matches('.media-message') ? article.firstElementChild : article;
+  return Boolean(bubble?.contains(target));
+}
+
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const holdFeedback = new WeakMap();
 const hiddenMessages = new WeakMap();
@@ -184,7 +191,7 @@ function openMessageMenu(event) {
   if (!(target instanceof Element)) return;
 
   const message = target.closest(MESSAGE_SELECTOR);
-  if (!message || !message.closest("[data-thread]")) return;
+  if (!message || !message.closest("[data-thread]") || !isMessageBubbleTarget(message, target)) return;
 
   const optionsButton = message.querySelector(OPTIONS_SELECTOR);
   if (!(optionsButton instanceof HTMLButtonElement)) return;

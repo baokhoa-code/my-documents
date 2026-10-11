@@ -1,4 +1,4 @@
-import { isMobileMessageDevice } from "./message-context-menu.js?v=6";
+import { isMobileMessageDevice } from "./message-context-menu.js?v=7";
 
 const HOLD_DELAY = 520;
 const MOVE_THRESHOLD = 10;

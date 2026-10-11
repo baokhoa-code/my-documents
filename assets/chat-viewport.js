@@ -1,4 +1,4 @@
-import { isMobileMessageDevice } from "./message-context-menu.js?v=6";
+import { isMobileMessageDevice } from "./message-context-menu.js?v=7";
 
 let mediaHeight = window.innerHeight;
 let keyboardOpen = false;
@@ -12,11 +12,27 @@ function modalIsVisible() {
 
 export function installChatViewport(shell) {
   const viewport = window.visualViewport;
-  let frame = 0, previous = null, pendingLatest = false;
+  let frame = 0, previous = null, pendingLatest = false, latestTimer = 0;
   let closedHeight = viewport?.height ?? window.innerHeight;
   mediaHeight = closedHeight;
   const originalStyle = shell.getAttribute("style");
   const body = shell.querySelector('.app-viewport-body');
+
+  function followAfterKeyboard() {
+    clearTimeout(latestTimer);
+    latestTimer = 0;
+    if (!pendingLatest || keyboardOpen || modalIsVisible()) return;
+    // Wait for the last keyboard frame, then perform one visible scroll.
+    latestTimer = window.setTimeout(() => {
+      latestTimer = 0;
+      if (keyboardOpen || modalIsVisible()) return;
+      const thread = shell.querySelector('[data-thread]');
+      if (!thread) { pendingLatest = false; return; }
+      pendingLatest = false;
+      thread.scrollTo({ top: thread.scrollHeight,
+        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth' });
+    }, 120);
+  }
 
   function update() {
     frame = 0;
@@ -42,11 +58,15 @@ export function installChatViewport(shell) {
     mediaHeight = mobile ? Math.max(mediaHeight, closedHeight) : height;
 
     const thread = shell.querySelector('[data-thread]');
+    const scrollTop = thread?.scrollTop ?? 0;
     const remaining = thread ? Math.max(0, thread.scrollHeight - thread.scrollTop - thread.clientHeight) : 0;
     const resized = previous && (previous.height !== height || widthChanged);
-    const closing = mobile && wasOpen && previous && height > previous.height;
-    if (closing || (wasOpen && !keyboardOpen)) pendingLatest = true;
-    if (keyboardOpen && previous && height < previous.height) pendingLatest = false;
+    if (wasOpen && !keyboardOpen) pendingLatest = true;
+    if (keyboardOpen) {
+      pendingLatest = false;
+      clearTimeout(latestTimer);
+      latestTimer = 0;
+    }
     const blocked = modalIsVisible();
 
     // Safari moves fixed layers during keyboard presentation. Applying offsetTop
@@ -61,16 +81,16 @@ export function installChatViewport(shell) {
     const inset = `${Math.max(0, frameHeight - height)}px`;
     if (body && body.style.marginBottom !== inset) body.style.marginBottom = inset;
     if (thread && !blocked) {
-      if (pendingLatest) {
-        thread.scrollTop = thread.scrollHeight;
-        pendingLatest = false;
-      } else if (mobile && resized && !widthChanged) {
-        // Keep the same content against the composer through each keyboard frame.
-        thread.scrollTop = thread.scrollHeight - thread.clientHeight - remaining;
+      if (mobile && resized && !widthChanged) {
+        // Opening keeps the reading anchor. Closing must not jump to newest
+        // before the keyboard has finished disappearing.
+        thread.scrollTop = height < previous.height
+          ? thread.scrollHeight - thread.clientHeight - remaining : scrollTop;
       }
     }
     const changed = !previous || Object.entries({ width, height, top, left }).some(([key, value]) => previous[key] !== value);
     previous = { width, height, top, left };
+    if (pendingLatest && (changed || !latestTimer)) followAfterKeyboard();
     if (changed || wasOpen !== keyboardOpen) window.dispatchEvent(new Event('chatviewportchange'));
   }
 
@@ -79,12 +99,13 @@ export function installChatViewport(shell) {
     [window, 'orientationchange'], [document, 'focusin'], [document, 'focusout']];
   events.forEach(([target, type]) => target?.addEventListener(type, schedule, { passive: true }));
   // A keyboard may close while an image/menu is open. Follow newest once it exits.
-  const observer = new MutationObserver(() => { if (pendingLatest && !modalIsVisible()) schedule(); });
+  const observer = new MutationObserver(() => { if (pendingLatest && !keyboardOpen && !modalIsVisible()) schedule(); });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true,
     attributeFilter: ['hidden', 'aria-modal', 'data-overlay-state'] });
   update();
   return () => {
     cancelAnimationFrame(frame);
+    clearTimeout(latestTimer);
     observer.disconnect();
     events.forEach(([target, type]) => target?.removeEventListener(type, schedule));
     if (originalStyle === null) shell.removeAttribute('style');
