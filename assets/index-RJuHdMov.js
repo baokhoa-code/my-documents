@@ -1,4 +1,4 @@
-import { installChatViewport, getChatMediaViewportHeight, isChatKeyboardOpen } from './chat-viewport.js?v=3';
+import { installChatViewport, getChatMediaViewportHeight, isChatKeyboardOpen } from './chat-viewport.js?v=4';
 import { createMobileImageTapHandlers } from './mobile-image-tap.js?v=2';
 import { animateOverlay, cancelOverlayMotion } from './overlay-motion.js?v=1';
 import { reloadFromFirebase } from './refresh-page.js?v=3';

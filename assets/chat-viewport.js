@@ -1,4 +1,5 @@
 import { isMobileMessageDevice } from "./message-context-menu.js?v=7";
+import { installIOSInputFocus } from "./ios-input-focus.js?v=1";
 
 let mediaHeight = window.innerHeight;
 let keyboardOpen = false;
@@ -17,6 +18,8 @@ export function installChatViewport(shell) {
   mediaHeight = closedHeight;
   const originalStyle = shell.getAttribute("style");
   const body = shell.querySelector('.app-viewport-body');
+  const restoreFocus = installIOSInputFocus(shell);
+  let settleUntil = 0;
 
   function followAfterKeyboard() {
     clearTimeout(latestTimer);
@@ -69,11 +72,13 @@ export function installChatViewport(shell) {
     }
     const blocked = modalIsVisible();
 
-    // Safari moves fixed layers during keyboard presentation. Applying offsetTop
-    // to their parent a second time makes the header slide down and then back up.
-    // Keep the outer frame at the origin; reserve keyboard space in the body only.
+    // Use document coordinates on mobile. WebKit's fixed-position compositor
+    // can pan independently of layout; pageTop also covers the pan when offsetTop
+    // is stale. Absolute positioning avoids adding that movement a second time.
+    const pageTop = Math.max(viewport?.pageTop ?? 0, window.scrollY + top);
+    const pageLeft = Math.max(viewport?.pageLeft ?? 0, window.scrollX + left);
     const frameHeight = mobile ? mediaHeight : height;
-    const values = { position: 'fixed', top: mobile ? '0px' : `${top}px`, left: mobile ? '0px' : `${left}px`,
+    const values = { position: mobile ? 'absolute' : 'fixed', top: `${mobile ? pageTop : top}px`, left: `${mobile ? pageLeft : left}px`,
       width: `${width}px`, height: `${frameHeight}px`, maxWidth: '100%', overflow: 'hidden' };
     for (const [property, value] of Object.entries(values)) {
       if (shell.style[property] !== value) shell.style[property] = value;
@@ -88,16 +93,20 @@ export function installChatViewport(shell) {
           ? thread.scrollHeight - thread.clientHeight - remaining : scrollTop;
       }
     }
-    const changed = !previous || Object.entries({ width, height, top, left }).some(([key, value]) => previous[key] !== value);
-    previous = { width, height, top, left };
+    const changed = !previous || Object.entries({ width, height, top, left, pageTop, pageLeft }).some(([key, value]) => previous[key] !== value);
+    previous = { width, height, top, left, pageTop, pageLeft };
     if (pendingLatest && (changed || !latestTimer)) followAfterKeyboard();
     if (changed || wasOpen !== keyboardOpen) window.dispatchEvent(new Event('chatviewportchange'));
+    // Home-screen WebKit can publish viewport offsets a frame after the resize
+    // event. Read them through the keyboard transition even without another event.
+    if (mobile && performance.now() < settleUntil) schedule();
   }
 
   function schedule() { if (!frame) frame = requestAnimationFrame(update); }
+  function transition() { settleUntil = performance.now() + 700; schedule(); }
   const events = [[viewport, 'resize'], [viewport, 'scroll'], [window, 'resize'],
     [window, 'orientationchange'], [document, 'focusin'], [document, 'focusout']];
-  events.forEach(([target, type]) => target?.addEventListener(type, schedule, { passive: true }));
+  events.forEach(([target, type]) => target?.addEventListener(type, transition, { passive: true }));
   // A keyboard may close while an image/menu is open. Follow newest once it exits.
   const observer = new MutationObserver(() => { if (pendingLatest && !keyboardOpen && !modalIsVisible()) schedule(); });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true,
@@ -107,7 +116,8 @@ export function installChatViewport(shell) {
     cancelAnimationFrame(frame);
     clearTimeout(latestTimer);
     observer.disconnect();
-    events.forEach(([target, type]) => target?.removeEventListener(type, schedule));
+    events.forEach(([target, type]) => target?.removeEventListener(type, transition));
+    restoreFocus();
     if (originalStyle === null) shell.removeAttribute('style');
     else shell.setAttribute('style', originalStyle);
     body?.style.removeProperty('margin-bottom');
