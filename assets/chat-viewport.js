@@ -1,4 +1,4 @@
-import { isMobileMessageDevice } from "./message-context-menu.js?v=7";
+import { isMobileMessageDevice } from "./message-context-menu.js?v=8";
 import { installIOSInputFocus } from "./ios-input-focus.js?v=1";
 
 let mediaHeight = window.innerHeight;

@@ -1,3 +1,5 @@
+import { MESSAGE_HOLD_FEEDBACK_DURATION } from "./message-gesture-timing.js?v=1";
+
 const MESSAGE_SELECTOR = ".message-row";
 const OPTIONS_SELECTOR = 'button[aria-label="Tùy chọn tin nhắn"]';
 
@@ -115,11 +117,11 @@ export function beginMessageHold(message, point) {
       { transform: "scale(0)", opacity: 0.06, offset: 0 },
       { transform: "scale(.85)", opacity: 0.1, offset: 0.7 },
       { transform: "scale(1)", opacity: 0, offset: 1 },
-    ], { duration: 520, easing: "cubic-bezier(.2,0,.2,1)", fill: "forwards" }),
+    ], { duration: MESSAGE_HOLD_FEEDBACK_DURATION, easing: "cubic-bezier(.2,0,.2,1)", fill: "forwards" }),
     preview.animate([
       { transform: initialTransform },
       { transform: "scale(.975)" },
-    ], { duration: 520, easing: "cubic-bezier(.2,0,.2,1)", fill: "forwards" }),
+    ], { duration: MESSAGE_HOLD_FEEDBACK_DURATION, easing: "cubic-bezier(.2,0,.2,1)", fill: "forwards" }),
   ] };
   holdFeedback.set(bubble, motion);
   motion.detachObserver = new MutationObserver(() => {

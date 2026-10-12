@@ -1,6 +1,6 @@
-import { isMobileMessageDevice } from "./message-context-menu.js?v=7";
+import { isMobileMessageDevice } from "./message-context-menu.js?v=8";
+import { MESSAGE_HOLD_DELAY } from "./message-gesture-timing.js?v=1";
 
-const HOLD_DELAY = 520;
 const MOVE_THRESHOLD = 10;
 let multiTouchVersion = 0;
 document.addEventListener("touchstart", event => {
@@ -32,7 +32,7 @@ export function createMobileImageTapHandlers(onTap, enabled) {
   const cancelPointer = () => { press = null; };
   function finish(event, point, coordinates) {
     cancel();
-    if (!enabled() || !point || point.version !== multiTouchVersion || performance.now() - point.started >= HOLD_DELAY) return;
+    if (!enabled() || !point || point.version !== multiTouchVersion || performance.now() - point.started >= MESSAGE_HOLD_DELAY) return;
     const row = event.currentTarget.closest(".message-row");
     if (row?.querySelector('button[aria-label="Tùy chọn tin nhắn"]')?.getAttribute("aria-expanded") === "true") return;
     event.preventDefault();
