@@ -33,15 +33,15 @@
 .mfa-account-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
 .mfa-account { min-width: 0; overflow: hidden; border: 1px solid var(--color-line); border-radius: 13px; background: var(--color-surface); }
 .mfa-card-head { gap: 6px; padding: 12px 8px 8px 14px; }
-.mfa-account-heading { min-width: 0; }
+.mfa-account-heading { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.mfa-platform-logo { display: grid; flex: none; place-items: center; width: 32px; height: 32px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-bar); color: var(--color-muted); font-size: 14px; font-weight: 650; cursor: pointer; }
+.mfa-platform-logo img { width: 19px; height: 19px; object-fit: contain; }
+.mfa-platform-logo [hidden] { display: none; }
 .mfa-account h3 { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.35; }
+.mfa-account-heading h3 { min-width: 0; }
 .mfa-account-name { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; text-align: left; cursor: pointer; }
-.mfa-account-name span, .mfa-account-meta button { min-width: 0; overflow-wrap: anywhere; }
-.mfa-account-meta { display: flex; align-items: baseline; gap: 7px; color: var(--color-muted); font-size: 11px; line-height: 1.5; }
-.mfa-account-meta button { text-align: left; cursor: pointer; }
-.mfa-account-meta time { white-space: nowrap; }
-.mfa-account-meta button + time::before { content: "·"; margin-right: 7px; }
-.mfa-account-name:hover, .mfa-account-meta button:hover { color: var(--color-accent); }
+.mfa-account-name span { min-width: 0; overflow-wrap: anywhere; }
+.mfa-account-name:hover, .mfa-platform-logo:hover { color: var(--color-accent); }
 .mfa-limits { display: flex; flex-wrap: wrap; gap: 4px 6px; padding: 0 14px 10px; }
 .mfa-limit { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 3px 7px; border: 1px solid transparent; border-radius: 7px; color: var(--color-muted); font-size: 12px; font-weight: 500; cursor: pointer; }
 .mfa-limit input, .mfa-usable-filter input { flex: none; appearance: auto; width: 15px; height: 15px; color-scheme: dark; accent-color: var(--color-accent); cursor: inherit; }
@@ -49,8 +49,7 @@
 .mfa-limit:has(input:checked) { border-color: #efb77a55; background: #efb77a12; color: #efb77a; }
 .mfa-limit:has(input[aria-busy="true"]) { cursor: progress; opacity: .7; }
 .mfa-limit:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-.mfa-limit-remaining { flex-basis: 100%; padding-inline-start: 2px; color: #efb77a; font-size: 12px; font-variant-numeric: tabular-nums; }
-.mfa-limit-remaining[hidden] { display: none; }
+.mfa-limit span { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mfa-credentials { padding: 0 14px; }
 .mfa-credential { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; min-height: 42px; padding: 7px 2px; border-top: 1px solid var(--color-line); text-align: left; cursor: pointer; }
 .mfa-credential:hover .mfa-value { color: var(--color-accent); }

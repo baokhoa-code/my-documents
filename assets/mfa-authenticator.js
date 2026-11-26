@@ -7,8 +7,21 @@ const LEGACY_VALUE_KEY = "my-documents-local-totp-v1";
 const LEGACY_DB = "my-documents-local-vault";
 const LEGACY_STORE = "keys";
 const LEGACY_KEY_ID = "totp-aes-v1";
-const LIMIT_5H_DURATION = 5 * 60 * 60 * 1000;
-const accountDateFormat = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short" });
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+const LIMITS = {
+  limit5h: { label: "Hết 5h", description: "Hạn mức 5 giờ", duration: 5 * HOUR },
+  limitWeek: { label: "Hết tuần", description: "Hạn mức tuần", duration: 7 * DAY },
+};
+const platformDomains = new Map([
+  ["chatgpt", "chatgpt.com"], ["chatgptplus", "chatgpt.com"], ["codex", "chatgpt.com"], ["openai", "chatgpt.com"],
+  ["gmail", "mail.google.com"], ["google", "google.com"], ["gemini", "gemini.google.com"], ["youtube", "youtube.com"],
+  ["claude", "claude.ai"], ["anthropic", "claude.ai"],
+  ["facebook", "facebook.com"], ["instagram", "instagram.com"], ["meta", "meta.com"],
+  ["microsoft", "microsoft.com"], ["outlook", "outlook.com"], ["hotmail", "outlook.com"],
+  ["github", "github.com"], ["apple", "apple.com"], ["discord", "discord.com"],
+]);
 const pendingLimits = new Map();
 
 let accounts = normalizeAccounts(readCache());
@@ -151,6 +164,10 @@ function accountCreatedAt(value, id) {
     ? timestamp : 0;
 }
 
+function normalizeDeadline(value) {
+  return Number.isSafeInteger(value) && value > 0 ? value : 0;
+}
+
 function normalizeAccount(value, id = value?.id) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const label = String(value.label || value.issuer || "Tài khoản");
@@ -160,8 +177,9 @@ function normalizeAccount(value, id = value?.id) {
     id,
     createdAt: accountCreatedAt(value, id),
     limit5h: value.limit5h === true,
-    limit5hUntil: Number.isSafeInteger(value.limit5hUntil) && value.limit5hUntil > 0 ? value.limit5hUntil : 0,
+    limit5hUntil: normalizeDeadline(value.limit5hUntil),
     limitWeek: value.limitWeek === true,
+    limitWeekUntil: normalizeDeadline(value.limitWeekUntil),
     platform: String(value.platform || (value.issuer && value.issuer !== "MFA" ? value.issuer : label.split(":")[0])),
     email: String(value.email ?? (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(legacyEmail) ? legacyEmail : "")),
     password: String(value.password ?? ""),
@@ -409,29 +427,40 @@ async function copyValue(value, label, button) {
 }
 
 function formatTimeRemaining(milliseconds) {
+  if (milliseconds >= DAY) {
+    const hours = Math.ceil(milliseconds / HOUR);
+    return [`${Math.floor(hours / 24)} d`, hours % 24 && `${hours % 24} h`].filter(Boolean).join(" ");
+  }
   const seconds = Math.ceil(milliseconds / 1000);
-  if (seconds < 60) return `${seconds} giây`;
-  const minutes = Math.ceil(seconds / 60);
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.ceil(milliseconds / MINUTE);
   const hours = Math.floor(minutes / 60);
-  const rest = minutes % 60;
-  return [hours && `${hours} giờ`, rest && `${rest} phút`].filter(Boolean).join(" ");
+  return [hours && `${hours} h`, minutes % 60 && `${minutes % 60} p`].filter(Boolean).join(" ");
 }
 
-function isLimit5hActive(account, now) {
-  return account.limit5h && (!account.limit5hUntil || account.limit5hUntil > now);
+function activeLimitDeadline(account, field, now) {
+  if (!account[field]) return 0;
+  const deadline = account[`${field}Until`];
+  if (!deadline) return Infinity;
+  return deadline > now ? deadline : 0;
 }
 
-function refreshLimit5h(card, account, now = Date.now()) {
-  const state = pendingLimits.get(`${account.id}/limit5h`) ?? account;
-  const remaining = state.limit5hUntil - now;
-  const checked = isLimit5hActive(state, now);
-  card.querySelector('[data-mfa-limit="limit5h"]').checked = checked;
-  const status = card.querySelector("[data-mfa-limit-remaining]");
-  const text = checked
-    ? (state.limit5hUntil ? `Còn ${formatTimeRemaining(remaining)}` : "Bỏ tick rồi tick lại để bắt đầu đếm ngược")
-    : "";
-  if (status.textContent !== text) status.textContent = text;
-  status.hidden = !text;
+function refreshLimits(card, account, now = Date.now()) {
+  for (const input of card.querySelectorAll("[data-mfa-limit]")) {
+    const field = input.dataset.mfaLimit;
+    const state = pendingLimits.get(`${account.id}/${field}`) ?? account;
+    const deadline = activeLimitDeadline(state, field, now);
+    const { label, description } = LIMITS[field];
+    const remaining = deadline && deadline !== Infinity ? `Còn ${formatTimeRemaining(deadline - now)}` : "";
+    input.checked = Boolean(deadline);
+    const status = input.nextElementSibling;
+    const text = remaining || label;
+    if (status.textContent !== text) status.textContent = text;
+    const accessibleName = remaining ? `${description}: ${remaining}` : description;
+    if (input.getAttribute("aria-label") !== accessibleName) input.setAttribute("aria-label", accessibleName);
+    const title = deadline === Infinity ? "Bỏ tick rồi tick lại để bắt đầu đếm ngược" : description;
+    if (input.parentElement.title !== title) input.parentElement.title = title;
+  }
 }
 
 function startTicker() {
@@ -446,7 +475,7 @@ function startTicker() {
     for (const card of body.querySelectorAll("[data-mfa-account]")) {
       const account = accounts[card.dataset.mfaAccount];
       if (!account || !card.isConnected) continue;
-      refreshLimit5h(card, account, now);
+      refreshLimits(card, account, now);
       if (!account.secret) continue;
       const codeValue = card.querySelector("[data-mfa-code]");
       const copyCode = card.querySelector("[data-mfa-copy-code]");
@@ -489,6 +518,27 @@ function credentialRow(label, value) {
   return row;
 }
 
+function renderPlatformLogo(button, platform) {
+  const initial = button.querySelector("span");
+  initial.textContent = [...platform.trim()][0]?.toUpperCase() || "?";
+  button.title = `Sao chép nền tảng: ${platform}`;
+  button.setAttribute("aria-label", button.title);
+  button.addEventListener("click", () => copyValue(platform, "Nền tảng", button));
+
+  const key = platform.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  const domain = platformDomains.get(key);
+  if (!domain) return;
+  const logo = document.createElement("img");
+  logo.alt = "";
+  logo.hidden = true;
+  logo.decoding = "async";
+  logo.referrerPolicy = "no-referrer";
+  logo.addEventListener("load", () => { logo.hidden = false; initial.hidden = true; }, { once: true });
+  logo.addEventListener("error", () => logo.remove(), { once: true });
+  logo.src = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
+  button.append(logo);
+}
+
 function createAccountCard(account) {
   const card = document.createElement("article");
   card.className = "mfa-account";
@@ -496,15 +546,13 @@ function createAccountCard(account) {
   card.innerHTML = `
     <div class="mfa-card-head">
       <div class="mfa-account-heading">
+        <button class="mfa-platform-logo" data-mfa-platform type="button"><span aria-hidden="true"></span></button>
         <h3><button class="mfa-account-name" data-mfa-name type="button"><span></span>${icon("copy")}</button></h3>
-        <div class="mfa-account-meta"><button data-mfa-platform type="button" aria-label="Sao chép nền tảng" title="Sao chép nền tảng"></button><time data-mfa-date title="Ngày thêm"></time></div>
       </div>
       <div class="mfa-actions"><button class="mfa-icon-button" type="button" data-mfa-edit aria-label="Sửa tài khoản" title="Sửa tài khoản">${icon("edit")}</button><button class="mfa-icon-button mfa-danger" type="button" data-mfa-delete aria-label="Xóa tài khoản" title="Xóa tài khoản">${icon("trash")}</button></div>
     </div>
     <div class="mfa-limits" role="group" aria-label="Hạn mức">
-      <label class="mfa-limit"><input type="checkbox" data-mfa-limit="limit5h"><span>Hết lượt 5 giờ</span></label>
-      <label class="mfa-limit"><input type="checkbox" data-mfa-limit="limitWeek"><span>Hết lượt tuần</span></label>
-      <p class="mfa-limit-remaining" data-mfa-limit-remaining hidden></p>
+      ${Object.keys(LIMITS).map(field => `<label class="mfa-limit"><input type="checkbox" data-mfa-limit="${field}"><span></span></label>`).join("")}
     </div>
     <div class="mfa-credentials" data-mfa-credentials></div>
     ${account.secret ? `
@@ -523,38 +571,21 @@ function createAccountCard(account) {
   name.title = `Sao chép ${nameLabel.toLowerCase()}`;
   name.setAttribute("aria-label", `${name.title} ${nameValue}`);
   name.addEventListener("click", () => copyValue(nameValue, nameLabel, name));
-  const platform = card.querySelector("[data-mfa-platform]");
-  if (account.email) {
-    platform.textContent = account.platform;
-    platform.addEventListener("click", () => copyValue(account.platform, "Nền tảng", platform));
-  } else platform.remove();
-  const date = card.querySelector("[data-mfa-date]");
-  if (account.createdAt) {
-    date.dateTime = new Date(account.createdAt).toISOString();
-    date.textContent = accountDateFormat.format(account.createdAt);
-  } else date.remove();
-  const remaining = card.querySelector("[data-mfa-limit-remaining]");
-  remaining.id = `mfa-limit-remaining-${account.id}`;
-  card.querySelector('[data-mfa-limit="limit5h"]').setAttribute("aria-describedby", remaining.id);
+  renderPlatformLogo(card.querySelector("[data-mfa-platform]"), account.platform);
   for (const input of card.querySelectorAll("[data-mfa-limit]")) {
     const field = input.dataset.mfaLimit;
     const key = `${account.id}/${field}`;
-    input.checked = (pendingLimits.get(key) ?? account)[field];
     if (pendingLimits.has(key)) input.setAttribute("aria-busy", "true");
     input.addEventListener("change", async () => {
-      const pending = pendingLimits.get(key);
-      if (pending) {
-        input.checked = pending[field];
-        refreshLimit5h(card, account);
+      if (pendingLimits.has(key)) {
+        refreshLimits(card, account);
         return;
       }
       const checked = input.checked;
-      const changes = field === "limit5h"
-        ? { limit5h: checked, limit5hUntil: checked ? Date.now() + LIMIT_5H_DURATION : 0 }
-        : { limitWeek: checked };
+      const changes = { [field]: checked, [`${field}Until`]: checked ? Date.now() + LIMITS[field].duration : 0 };
       pendingLimits.set(key, changes);
       input.setAttribute("aria-busy", "true");
-      refreshLimit5h(card, account);
+      refreshLimits(card, account);
       try {
         await updateAccount(account.id, changes);
         if (!initialized) initializeSync().catch(() => {});
@@ -566,10 +597,9 @@ function createAccountCard(account) {
       }
     });
   }
-  refreshLimit5h(card, account);
+  refreshLimits(card, account);
   const credentials = card.querySelector("[data-mfa-credentials]");
   if (account.password) credentials.append(credentialRow("Mật khẩu", account.password));
-  if (account.secret) credentials.append(credentialRow("Khóa MFA", account.secret));
   const copyCode = card.querySelector("[data-mfa-copy-code]");
   copyCode?.addEventListener("click", () => copyValue(copyCode.dataset.code, "Mã xác thực", copyCode));
   card.querySelector("[data-mfa-edit]").addEventListener("click", () => renderSetup(account));
@@ -599,9 +629,9 @@ function refreshAccountList(now = Date.now()) {
   const sorted = all.filter((account) => {
     if (!`${account.platform} ${account.email} ${account.label}`.toLocaleLowerCase("vi").includes(query)) return false;
     if (!usableOnly) return true;
-    if (account.limitWeek) return false;
-    if (!isLimit5hActive(account, now)) return true;
-    if (account.limit5hUntil) nextUsableAt = Math.min(nextUsableAt, account.limit5hUntil);
+    const deadline = Math.max(activeLimitDeadline(account, "limit5h", now), activeLimitDeadline(account, "limitWeek", now));
+    if (!deadline) return true;
+    nextUsableAt = Math.min(nextUsableAt, deadline);
     return false;
   }).sort((a, b) => b.createdAt - a.createdAt || a.platform.localeCompare(b.platform, "vi") || a.email.localeCompare(b.email, "vi"));
   const focused = document.activeElement;
