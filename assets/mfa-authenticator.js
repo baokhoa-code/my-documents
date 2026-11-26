@@ -32,6 +32,7 @@ let pollTimer = null;
 let tickTimer = null;
 let initialized = false;
 let searchQuery = "";
+let platformFilter = "gpt";
 let usableOnly = false;
 let nextUsableAt = Infinity;
 let syncPromise = null;
@@ -761,6 +762,32 @@ function createAccountCard(account) {
   return card;
 }
 
+function platformFilterKey(platform) {
+  const key = platform.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  return ["gpt", "gptplus", "chatgpt", "chatgptplus", "codex", "openai"].includes(key) ? "gpt" : key;
+}
+
+function refreshPlatformOptions(all) {
+  const select = body.querySelector("[data-mfa-platform-filter]");
+  if (!select) return;
+  const platforms = new Map([["gpt", "GPT"]]);
+  for (const account of all) {
+    const key = platformFilterKey(account.platform);
+    if (key && !platforms.has(key)) platforms.set(key, account.platform.trim());
+  }
+  // Keep the active provider selected if its last account is removed remotely.
+  if (platformFilter && !platforms.has(platformFilter)) {
+    platforms.set(platformFilter, select.selectedOptions[0]?.textContent || platformFilter);
+  }
+  const options = [["", "Tất cả"], ...[...platforms].sort((a, b) =>
+    a[0] === "gpt" ? -1 : b[0] === "gpt" ? 1 : a[1].localeCompare(b[1], "vi"))];
+  if (select.options.length !== options.length || options.some(([value, label], index) =>
+    select.options[index].value !== value || select.options[index].textContent !== label)) {
+    select.replaceChildren(...options.map(([value, label]) => new Option(label, value)));
+  }
+  select.value = platformFilter;
+}
+
 function refreshAccountList(now = Date.now()) {
   const list = body.querySelector("[data-mfa-list]");
   if (!list) return;
@@ -768,8 +795,10 @@ function refreshAccountList(now = Date.now()) {
   if (weekAccountId !== null && !accounts[weekAccountId]) closeWeekEditor(true);
   const query = searchQuery.trim().toLocaleLowerCase("vi");
   const all = Object.values(accounts).map((value) => normalizeAccount(value)).filter(Boolean);
+  refreshPlatformOptions(all);
   nextUsableAt = Infinity;
   const sorted = all.filter((account) => {
+    if (platformFilter && platformFilterKey(account.platform) !== platformFilter) return false;
     if (!`${account.platform} ${account.email} ${account.label}`.toLocaleLowerCase("vi").includes(query)) return false;
     if (!usableOnly) return true;
     const deadline = Math.max(activeLimitDeadline(account, "limit5h", now), activeLimitDeadline(account, "limitWeek", now));
@@ -786,7 +815,7 @@ function refreshAccountList(now = Date.now()) {
   if (!sorted.length) {
     const empty = document.createElement("div");
     empty.className = "mfa-empty";
-    empty.textContent = query ? "Không tìm thấy tài khoản"
+    empty.textContent = query || platformFilter && all.length ? "Không tìm thấy tài khoản phù hợp bộ lọc"
       : usableOnly && all.length ? "Không có tài khoản còn lượt" : "Chưa có tài khoản";
     list.append(empty);
   } else {
@@ -809,6 +838,7 @@ function renderList() {
   body.innerHTML = `
     <div class="mfa-toolbar">
       <label class="mfa-search">${icon("search")}<input data-mfa-search type="search" placeholder="Tìm tài khoản…" aria-label="Tìm tài khoản" autocomplete="off"></label>
+      <select class="mfa-platform-filter" data-mfa-platform-filter aria-label="Lọc nền tảng"></select>
       <label class="mfa-usable-filter"><input data-mfa-usable-only type="checkbox"><span>Còn lượt</span></label>
       <button class="mfa-primary" data-mfa-add type="button" aria-label="Thêm tài khoản">${icon("plus")}<span>Thêm</span></button>
     </div>
@@ -818,6 +848,8 @@ function renderList() {
   const search = body.querySelector("[data-mfa-search]");
   search.value = searchQuery;
   search.addEventListener("input", () => { searchQuery = search.value; refreshAccountList(); });
+  const platform = body.querySelector("[data-mfa-platform-filter]");
+  platform.addEventListener("change", () => { platformFilter = platform.value; refreshAccountList(); });
   const filter = body.querySelector("[data-mfa-usable-only]");
   filter.checked = usableOnly;
   filter.addEventListener("change", () => { usableOnly = filter.checked; refreshAccountList(); });
@@ -1016,7 +1048,7 @@ window.addEventListener("keydown", (event) => {
   }
   if (event.key !== "Tab") return;
   const scope = dismissSetup ? setupOverlay : weekAccountId !== null ? weekOverlay : modal;
-  const focusable = [...scope.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')].filter((element) => !element.closest("[inert]") && element.getClientRects().length);
+  const focusable = [...scope.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled)')].filter((element) => !element.closest("[inert]") && element.getClientRects().length);
   const first = focusable[0];
   const last = focusable.at(-1);
   if (!first) { event.preventDefault(); (scope === modal ? panel : scope.querySelector("[role='dialog']")).focus(); return; }
