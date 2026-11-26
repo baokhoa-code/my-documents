@@ -19,6 +19,8 @@ let tickTimer = null;
 let initialized = false;
 let currentView = "list";
 let searchQuery = "";
+let usableOnly = false;
+let nextUsableAt = Infinity;
 let syncPromise = null;
 let returnFocus = null;
 
@@ -415,10 +417,14 @@ function formatTimeRemaining(milliseconds) {
   return [hours && `${hours} giờ`, rest && `${rest} phút`].filter(Boolean).join(" ");
 }
 
+function isLimit5hActive(account, now) {
+  return account.limit5h && (!account.limit5hUntil || account.limit5hUntil > now);
+}
+
 function refreshLimit5h(card, account, now = Date.now()) {
   const state = pendingLimits.get(`${account.id}/limit5h`) ?? account;
   const remaining = state.limit5hUntil - now;
-  const checked = state.limit5h && (!state.limit5hUntil || remaining > 0);
+  const checked = isLimit5hActive(state, now);
   card.querySelector('[data-mfa-limit="limit5h"]').checked = checked;
   const status = card.querySelector("[data-mfa-limit-remaining]");
   const text = checked
@@ -433,6 +439,10 @@ function startTicker() {
   if (modal.hidden || modal.dataset.overlayState === "closing" || currentView !== "list") return;
   async function tick() {
     const now = Date.now();
+    if (now >= nextUsableAt) {
+      refreshAccountList(now);
+      return;
+    }
     for (const card of body.querySelectorAll("[data-mfa-account]")) {
       const account = accounts[card.dataset.mfaAccount];
       if (!account || !card.isConnected) continue;
@@ -457,8 +467,8 @@ function startTicker() {
       }
     }
   }
-  tick();
   tickTimer = window.setInterval(tick, 1000);
+  tick();
 }
 
 function credentialRow(label, value, mono = false) {
@@ -581,15 +591,22 @@ function createAccountCard(account) {
   return card;
 }
 
-function refreshAccountList() {
+function refreshAccountList(now = Date.now()) {
   const list = body.querySelector("[data-mfa-list]");
   if (!list) return;
   const query = searchQuery.trim().toLocaleLowerCase("vi");
   const all = Object.values(accounts).map((value) => normalizeAccount(value)).filter(Boolean);
-  const sorted = all.filter((account) => `${account.platform} ${account.email} ${account.label}`.toLocaleLowerCase("vi").includes(query))
-    .sort((a, b) => b.createdAt - a.createdAt || a.platform.localeCompare(b.platform, "vi") || a.email.localeCompare(b.email, "vi"));
+  nextUsableAt = Infinity;
+  const sorted = all.filter((account) => {
+    if (!`${account.platform} ${account.email} ${account.label}`.toLocaleLowerCase("vi").includes(query)) return false;
+    if (!usableOnly) return true;
+    if (account.limitWeek) return false;
+    if (!isLimit5hActive(account, now)) return true;
+    if (account.limit5hUntil) nextUsableAt = Math.min(nextUsableAt, account.limit5hUntil);
+    return false;
+  }).sort((a, b) => b.createdAt - a.createdAt || a.platform.localeCompare(b.platform, "vi") || a.email.localeCompare(b.email, "vi"));
   body.querySelector("[data-mfa-total]").textContent = `${all.length} tài khoản`;
-  body.querySelector("[data-mfa-results]").textContent = query ? `${sorted.length} kết quả` : "";
+  body.querySelector("[data-mfa-results]").textContent = query || usableOnly ? `${sorted.length} kết quả` : "";
   const focused = document.activeElement;
   const focusedCard = focused?.closest("[data-mfa-account]");
   const focusId = focusedCard?.dataset.mfaAccount;
@@ -599,9 +616,14 @@ function refreshAccountList() {
   if (!sorted.length) {
     const empty = document.createElement("div");
     empty.className = "mfa-empty";
-    empty.innerHTML = `${icon(query ? "search" : "key")}<h3></h3><p></p>`;
-    empty.querySelector("h3").textContent = query ? "Không tìm thấy tài khoản" : "Chưa có tài khoản";
-    empty.querySelector("p").textContent = query ? "Thử tìm bằng nền tảng hoặc email khác." : "Thêm nền tảng, email, mật khẩu và khóa MFA nếu có.";
+    empty.innerHTML = `${icon(query || usableOnly ? "search" : "key")}<h3></h3><p></p>`;
+    if (usableOnly && all.length) {
+      empty.querySelector("h3").textContent = query ? "Không có tài khoản dùng được khớp tìm kiếm" : "Không có tài khoản nào dùng được";
+      empty.querySelector("p").textContent = query ? "Thử từ khóa khác hoặc bỏ lọc." : "Bỏ lọc để xem tất cả tài khoản.";
+    } else {
+      empty.querySelector("h3").textContent = query ? "Không tìm thấy tài khoản" : "Chưa có tài khoản";
+      empty.querySelector("p").textContent = query ? "Thử tìm bằng nền tảng hoặc email khác." : "Thêm nền tảng, email, mật khẩu và khóa MFA nếu có.";
+    }
     list.append(empty);
   } else {
     for (const account of sorted) list.append(createAccountCard(account));
@@ -620,7 +642,13 @@ function renderList() {
   currentView = "list";
   clearInterval(tickTimer);
   body.innerHTML = `
-    <div class="mfa-toolbar"><div><h3>Danh sách tài khoản</h3><p class="mfa-meta" data-mfa-total></p></div><button class="mfa-primary" data-mfa-add type="button">${icon("plus")}<span>Thêm tài khoản</span></button></div>
+    <div class="mfa-toolbar">
+      <div>
+        <div class="mfa-toolbar-title"><h3>Danh sách tài khoản</h3><label class="mfa-usable-filter"><input data-mfa-usable-only type="checkbox"><span>Còn sử dụng được</span></label></div>
+        <p class="mfa-meta" data-mfa-total></p>
+      </div>
+      <button class="mfa-primary" data-mfa-add type="button">${icon("plus")}<span>Thêm tài khoản</span></button>
+    </div>
     <div class="mfa-search-wrap"><label class="mfa-search">${icon("search")}<input data-mfa-search type="search" placeholder="Tìm nền tảng, email…" aria-label="Tìm tài khoản" autocomplete="off"></label><span class="mfa-meta" data-mfa-results></span></div>
     <p class="mfa-error" data-mfa-error role="alert"></p>
     <div class="mfa-account-list" data-mfa-list></div>
@@ -628,6 +656,9 @@ function renderList() {
   const search = body.querySelector("[data-mfa-search]");
   search.value = searchQuery;
   search.addEventListener("input", () => { searchQuery = search.value; refreshAccountList(); });
+  const filter = body.querySelector("[data-mfa-usable-only]");
+  filter.checked = usableOnly;
+  filter.addEventListener("change", () => { usableOnly = filter.checked; refreshAccountList(); });
   body.querySelector("[data-mfa-add]").addEventListener("click", () => renderSetup());
   refreshAccountList();
   body.scrollTop = 0;
