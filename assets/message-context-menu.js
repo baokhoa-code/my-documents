@@ -203,24 +203,43 @@ mobilePointer.addEventListener("change", updateMobileSelection);
 document.addEventListener("selectstart", preventMobileSelection, true);
 document.addEventListener("dragstart", preventMobileSelection, true);
 
+const messageMenuContext = new WeakMap();
+
+export function getMessageMenuContext(button) {
+  return messageMenuContext.get(button);
+}
+
 function openMessageMenu(event) {
   const target = event.target;
   if (!(target instanceof Element)) return;
 
   const message = target.closest(MESSAGE_SELECTOR);
   if (!message || !message.closest("[data-thread]") || !isMessageBubbleTarget(message, target)) return;
-  if (isNativeMessageLink(target)) return;
+  const mobile = isMobileMessageDevice();
+  const selectedText = mobile ? '' : getSelectedMessageText(message);
+  if (isNativeMessageLink(target) && !selectedText.trim()) return;
 
   const optionsButton = message.querySelector(OPTIONS_SELECTOR);
   if (!(optionsButton instanceof HTMLButtonElement)) return;
 
   event.preventDefault();
   event.stopPropagation();
-  if (isMobileMessageDevice()) window.getSelection()?.removeAllRanges();
+  if (optionsButton.getAttribute("aria-expanded") === "true") return;
 
-  if (optionsButton.getAttribute("aria-expanded") !== "true") {
-    confirmMessageHold(message, event.clientX || event.clientY ? { x: event.clientX, y: event.clientY } : void 0);
+  const point = event.button === 2 || event.clientX || event.clientY
+    ? { x: event.clientX, y: event.clientY } : undefined;
+  if (mobile) {
+    window.getSelection()?.removeAllRanges();
+    confirmMessageHold(message, point);
     optionsButton.click();
+    return;
+  }
+
+  messageMenuContext.set(optionsButton, { point, selectedText });
+  try {
+    optionsButton.click();
+  } finally {
+    messageMenuContext.delete(optionsButton);
   }
 }
 

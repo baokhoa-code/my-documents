@@ -1,4 +1,4 @@
-import { createMessageSnapshot, getMessageHoldBounds, hideMessageSource, releaseMessageHold } from "./message-context-menu.js?v=9";
+import { createMessageSnapshot, getMessageHoldBounds, hideMessageSource, releaseMessageHold } from "./message-context-menu.js?v=10";
 
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const clamp = (value, min, max) => Math.max(min, Math.min(value, max));

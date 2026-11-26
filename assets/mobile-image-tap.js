@@ -1,4 +1,4 @@
-import { isMobileMessageDevice } from "./message-context-menu.js?v=9";
+import { isMobileMessageDevice } from "./message-context-menu.js?v=10";
 import { MESSAGE_HOLD_DELAY } from "./message-gesture-timing.js?v=1";
 
 const MOVE_THRESHOLD = 10;
