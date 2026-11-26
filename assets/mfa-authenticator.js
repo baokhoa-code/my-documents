@@ -23,6 +23,7 @@ const platformDomains = new Map([
   ["github", "github.com"], ["apple", "apple.com"], ["discord", "discord.com"],
 ]);
 const pendingLimits = new Map();
+const deletingAccounts = new Set();
 
 let accounts = normalizeAccounts(readCache());
 let databaseUrl = "";
@@ -363,6 +364,7 @@ async function initializeSync() {
 
 const icons = {
   copy: '<rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>',
+  more: '<circle cx="5" cy="12" r="1" fill="currentColor"></circle><circle cx="12" cy="12" r="1" fill="currentColor"></circle><circle cx="19" cy="12" r="1" fill="currentColor"></circle>',
   edit: '<path d="m16 3 5 5-12 12-6 1 1-6Z"></path><path d="m14 5 5 5"></path>',
   trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"></path>',
   plus: '<path d="M12 5v14M5 12h14"></path>',
@@ -385,11 +387,19 @@ modal.innerHTML = `
       <button class="mfa-close" type="button" aria-label="Đóng quản lý tài khoản">${icon("close")}</button>
     </header>
     <div class="mfa-body" data-mfa-body></div>
+    <div class="mfa-account-menu" id="mfa-account-menu" role="menu" aria-label="Tùy chọn tài khoản" hidden>
+      <button type="button" role="menuitem" tabindex="-1" data-mfa-edit>${icon("edit")} Sửa</button>
+      <button class="mfa-danger" type="button" role="menuitem" tabindex="-1" data-mfa-delete>${icon("trash")} Xóa</button>
+    </div>
     <div class="mfa-toast" role="status" aria-live="polite" hidden></div>
   </section>
 `;
 document.body.append(modal);
 const body = modal.querySelector("[data-mfa-body]");
+const panel = modal.querySelector(".mfa-card");
+const accountMenu = modal.querySelector("#mfa-account-menu");
+const menuItems = [...accountMenu.querySelectorAll("button")];
+let accountMenuTrigger = null;
 let toastTimer = null;
 
 function notify(message) {
@@ -511,12 +521,75 @@ function credentialRow(label, value) {
   row.type = "button";
   row.title = `Sao chép ${label.toLowerCase()}`;
   row.setAttribute("aria-label", row.title);
-  row.innerHTML = `<span class="mfa-field-label"></span><span class="mfa-value mfa-mono"></span>${icon("copy")}`;
-  row.querySelector(".mfa-field-label").textContent = label;
+  row.innerHTML = `<span class="mfa-value mfa-mono"></span>${icon("copy")}`;
   row.querySelector(".mfa-value").textContent = value;
   row.addEventListener("click", () => copyValue(value, label, row));
   return row;
 }
+
+function closeAccountMenu(restoreFocus = false) {
+  if (!accountMenuTrigger) return;
+  const trigger = accountMenuTrigger;
+  accountMenuTrigger = null;
+  accountMenu.hidden = true;
+  modal.removeEventListener("wheel", preventAccountMenuScroll);
+  modal.removeEventListener("touchmove", preventAccountMenuScroll);
+  trigger.setAttribute("aria-expanded", "false");
+  if (restoreFocus) trigger.focus({ preventScroll: true });
+}
+
+function toggleAccountMenu(trigger) {
+  if (accountMenuTrigger === trigger) { closeAccountMenu(true); return; }
+  closeAccountMenu();
+  accountMenuTrigger = trigger;
+  trigger.setAttribute("aria-expanded", "true");
+  accountMenu.hidden = false;
+  modal.addEventListener("wheel", preventAccountMenuScroll, { passive: false });
+  modal.addEventListener("touchmove", preventAccountMenuScroll, { passive: false });
+  const frame = panel.getBoundingClientRect();
+  const anchor = trigger.getBoundingClientRect();
+  const scale = frame.width / panel.offsetWidth || 1;
+  const margin = 8;
+  const gap = 4;
+  const x = (anchor.right - frame.left) / scale - panel.clientLeft - accountMenu.offsetWidth;
+  const down = (anchor.bottom - frame.top) / scale - panel.clientTop + gap;
+  const up = (anchor.top - frame.top) / scale - panel.clientTop - accountMenu.offsetHeight - gap;
+  const y = down + accountMenu.offsetHeight > panel.clientHeight - margin ? up : down;
+  accountMenu.style.left = `${Math.max(margin, Math.min(x, panel.clientWidth - accountMenu.offsetWidth - margin))}px`;
+  accountMenu.style.top = `${Math.max(margin, y)}px`;
+  menuItems[0].focus({ preventScroll: true });
+}
+
+function selectedMenuAccount() {
+  const card = accountMenuTrigger?.closest("[data-mfa-account]");
+  return card && accounts[card.dataset.mfaAccount];
+}
+
+accountMenu.querySelector("[data-mfa-edit]").addEventListener("click", () => {
+  const account = selectedMenuAccount();
+  closeAccountMenu(true);
+  if (account) renderSetup(account);
+});
+accountMenu.querySelector("[data-mfa-delete]").addEventListener("click", async () => {
+  const account = selectedMenuAccount();
+  const trigger = accountMenuTrigger;
+  closeAccountMenu(true);
+  if (!account || deletingAccounts.has(account.id)) return;
+  const name = [account.platform, account.email].filter(Boolean).join(" · ");
+  if (!window.confirm(`Xóa tài khoản “${name}” trên tất cả thiết bị?`)) return;
+  deletingAccounts.add(account.id);
+  trigger.disabled = true;
+  try {
+    await removeAccount(account.id);
+    notify("Đã xóa tài khoản");
+  } catch (error) {
+    showError(error instanceof Error ? error.message : "Không xóa được tài khoản.");
+  } finally {
+    deletingAccounts.delete(account.id);
+    trigger.disabled = false;
+    if (!modal.hidden && currentView === "list") refreshAccountList();
+  }
+});
 
 function renderPlatformLogo(button, platform) {
   const initial = button.querySelector("span");
@@ -545,32 +618,29 @@ function createAccountCard(account) {
   card.dataset.mfaAccount = account.id;
   card.innerHTML = `
     <div class="mfa-card-head">
-      <div class="mfa-account-heading">
-        <button class="mfa-platform-logo" data-mfa-platform type="button"><span aria-hidden="true"></span></button>
-        <h3><button class="mfa-account-name" data-mfa-name type="button"><span></span>${icon("copy")}</button></h3>
+      <button class="mfa-platform-logo" data-mfa-platform type="button"><span aria-hidden="true"></span></button>
+      <div class="mfa-limits" role="group" aria-label="Hạn mức">
+        ${Object.keys(LIMITS).map(field => `<label class="mfa-limit"><input type="checkbox" data-mfa-limit="${field}"><span></span></label>`).join("")}
       </div>
-      <div class="mfa-actions"><button class="mfa-icon-button" type="button" data-mfa-edit aria-label="Sửa tài khoản" title="Sửa tài khoản">${icon("edit")}</button><button class="mfa-icon-button mfa-danger" type="button" data-mfa-delete aria-label="Xóa tài khoản" title="Xóa tài khoản">${icon("trash")}</button></div>
+      <button class="mfa-icon-button mfa-account-more" data-mfa-more type="button" aria-label="Tùy chọn tài khoản" aria-haspopup="menu" aria-controls="mfa-account-menu" aria-expanded="false" title="Tùy chọn tài khoản">${icon("more")}</button>
     </div>
-    <div class="mfa-limits" role="group" aria-label="Hạn mức">
-      ${Object.keys(LIMITS).map(field => `<label class="mfa-limit"><input type="checkbox" data-mfa-limit="${field}"><span></span></label>`).join("")}
-    </div>
-    <div class="mfa-credentials" data-mfa-credentials></div>
+    <div class="mfa-credentials"><h3></h3></div>
     ${account.secret ? `
       <button class="mfa-otp" type="button" data-mfa-copy-code aria-label="Sao chép mã xác thực" title="Sao chép mã xác thực" disabled>
-        <span class="mfa-field-label">Mã xác thực</span>
         <span class="mfa-code" data-mfa-code>··· ···</span>
         <span class="mfa-countdown" data-mfa-countdown></span>
         ${icon("copy")}
         <span class="mfa-progress" aria-hidden="true"><span data-mfa-progress></span></span>
       </button>` : ""}
   `;
-  const name = card.querySelector("[data-mfa-name]");
   const nameValue = account.email || account.platform;
   const nameLabel = account.email ? "Tên đăng nhập" : "Nền tảng";
-  name.querySelector("span").textContent = nameValue;
-  name.title = `Sao chép ${nameLabel.toLowerCase()}`;
+  const name = credentialRow(nameLabel, nameValue);
+  name.classList.add("mfa-account-name");
+  name.dataset.mfaName = "";
   name.setAttribute("aria-label", `${name.title} ${nameValue}`);
-  name.addEventListener("click", () => copyValue(nameValue, nameLabel, name));
+  const credentials = card.querySelector(".mfa-credentials");
+  credentials.querySelector("h3").append(name);
   renderPlatformLogo(card.querySelector("[data-mfa-platform]"), account.platform);
   for (const input of card.querySelectorAll("[data-mfa-limit]")) {
     const field = input.dataset.mfaLimit;
@@ -598,31 +668,19 @@ function createAccountCard(account) {
     });
   }
   refreshLimits(card, account);
-  const credentials = card.querySelector("[data-mfa-credentials]");
   if (account.password) credentials.append(credentialRow("Mật khẩu", account.password));
   const copyCode = card.querySelector("[data-mfa-copy-code]");
   copyCode?.addEventListener("click", () => copyValue(copyCode.dataset.code, "Mã xác thực", copyCode));
-  card.querySelector("[data-mfa-edit]").addEventListener("click", () => renderSetup(account));
-  card.querySelector("[data-mfa-delete]").addEventListener("click", async (event) => {
-    const name = [account.platform, account.email].filter(Boolean).join(" · ");
-    if (!window.confirm(`Xóa tài khoản “${name}” trên tất cả thiết bị?`)) return;
-    const button = event.currentTarget;
-    button.disabled = true;
-    try {
-      await removeAccount(account.id);
-      refreshAccountList();
-      notify("Đã xóa tài khoản");
-    } catch (error) {
-      button.disabled = false;
-      showError(error instanceof Error ? error.message : "Không xóa được tài khoản.");
-    }
-  });
+  const more = card.querySelector("[data-mfa-more]");
+  more.disabled = deletingAccounts.has(account.id);
+  more.addEventListener("click", () => toggleAccountMenu(more));
   return card;
 }
 
 function refreshAccountList(now = Date.now()) {
   const list = body.querySelector("[data-mfa-list]");
   if (!list) return;
+  closeAccountMenu(true);
   const query = searchQuery.trim().toLocaleLowerCase("vi");
   const all = Object.values(accounts).map((value) => normalizeAccount(value)).filter(Boolean);
   nextUsableAt = Infinity;
@@ -660,6 +718,7 @@ function refreshAccountList(now = Date.now()) {
 }
 
 function renderList() {
+  closeAccountMenu();
   currentView = "list";
   clearInterval(tickTimer);
   body.innerHTML = `
@@ -683,6 +742,7 @@ function renderList() {
 }
 
 function renderSetup(existing = null) {
+  closeAccountMenu();
   currentView = "setup";
   clearInterval(tickTimer);
   body.innerHTML = `
@@ -792,6 +852,7 @@ function renderSetup(existing = null) {
 
 let modalVersion = 0;
 async function openAuthenticator() {
+  closeAccountMenu();
   const version = ++modalVersion;
   returnFocus = document.activeElement;
   modal.hidden = false;
@@ -813,6 +874,7 @@ async function openAuthenticator() {
 
 function closeAuthenticator() {
   if (modal.hidden || modal.dataset.overlayState === "closing") return;
+  closeAccountMenu();
   const version = ++modalVersion;
   clearInterval(tickTimer);
   animateOverlay(modal, "exit", "dialog").then(finished => {
@@ -825,14 +887,41 @@ function closeAuthenticator() {
 
 modal.querySelector(".mfa-close").addEventListener("click", closeAuthenticator);
 modal.addEventListener("click", (event) => event.target === modal && closeAuthenticator());
+document.addEventListener("pointerdown", (event) => {
+  if (accountMenuTrigger && !accountMenu.contains(event.target) && !accountMenuTrigger.contains(event.target)) closeAccountMenu();
+});
+function preventAccountMenuScroll(event) {
+  event.preventDefault();
+}
+window.addEventListener("resize", () => closeAccountMenu(true));
 window.addEventListener("keydown", (event) => {
   if (modal.hidden || modal.dataset.overlayState === "closing") return;
-  if (event.key === "Escape") { event.preventDefault(); closeAuthenticator(); }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    if (accountMenuTrigger) closeAccountMenu(true);
+    else closeAuthenticator();
+    return;
+  }
+  if (accountMenuTrigger && accountMenu.contains(document.activeElement)) {
+    if (event.key === "Tab") closeAccountMenu(true);
+    else if (event.key === "PageDown" || event.key === "PageUp") {
+      event.preventDefault();
+      return;
+    }
+    else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      event.preventDefault();
+      const index = menuItems.indexOf(document.activeElement);
+      const next = event.key === "Home" ? 0 : event.key === "End" ? menuItems.length - 1
+        : (index + (event.key === "ArrowDown" ? 1 : -1) + menuItems.length) % menuItems.length;
+      menuItems[next].focus();
+      return;
+    }
+  }
   if (event.key !== "Tab") return;
   const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')].filter((element) => element.getClientRects().length);
   const first = focusable[0];
   const last = focusable.at(-1);
-  if (!first) { event.preventDefault(); modal.querySelector(".mfa-card").focus(); return; }
+  if (!first) { event.preventDefault(); panel.focus(); return; }
   if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
   else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
 });

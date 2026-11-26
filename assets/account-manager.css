@@ -1,17 +1,18 @@
-.mfa-modal[hidden], .mfa-toast[hidden] { display: none !important; }
+.mfa-modal[hidden], .mfa-toast[hidden], .mfa-account-menu[hidden] { display: none !important; }
 .mfa-modal { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 24px; background: rgba(0, 0, 0, .72); }
 .mfa-card { position: relative; display: flex; flex-direction: column; width: min(960px, 100%); max-height: calc(100dvh - 48px); overflow: hidden; border: 1px solid var(--color-line, #2c333c); border-radius: 22px; background: var(--color-bar, #1b1e22); color: var(--color-fg, #e8edf3); box-shadow: 0 24px 80px rgba(0, 0, 0, .55); }
-.mfa-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 22px; border-bottom: 1px solid var(--color-line); }
-.mfa-head h2 { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.35; letter-spacing: -.02em; }
-.mfa-row, .mfa-card-head, .mfa-toolbar, .mfa-actions { display: flex; align-items: center; gap: 10px; }
+.mfa-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 22px; border-bottom: 1px solid var(--color-line); }
+.mfa-head h2 { margin: 0; font-size: 21px; font-weight: 700; line-height: 1.35; letter-spacing: -.02em; }
+.mfa-row, .mfa-card-head, .mfa-toolbar { display: flex; align-items: center; gap: 10px; }
 .mfa-meta, .mfa-help, .mfa-error { font-size: 13px; line-height: 1.5; }
 .mfa-meta, .mfa-help { color: var(--color-muted); }
-.mfa-body { min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 16px 22px 22px; }
-.mfa-row, .mfa-card-head { justify-content: space-between; }
+.mfa-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 18px 22px 24px; }
+.mfa-card:has(> .mfa-account-menu:not([hidden])) .mfa-body { overflow-y: hidden; }
+.mfa-row { justify-content: space-between; }
 .mfa-toolbar { margin-bottom: 16px; }
 .mfa-form-heading h3 { margin: 0; font-size: 17px; font-weight: 650; }
 .mfa-toolbar > .mfa-primary { flex: none; }
-.mfa-usable-filter { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 12px; border: 1px solid var(--color-line); border-radius: 10px; color: var(--color-muted); font-size: 13px; font-weight: 600; cursor: pointer; }
+.mfa-usable-filter { display: inline-flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 12px; border: 1px solid var(--color-line); border-radius: 10px; color: var(--color-muted); font-size: 14px; font-weight: 600; cursor: pointer; }
 .mfa-usable-filter:has(input:checked) { border-color: var(--color-accent); color: var(--color-accent); }
 .mfa-usable-filter:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .mfa-close, .mfa-header-button, .mfa-icon-button { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 10px; cursor: pointer; background: transparent; }
@@ -19,31 +20,30 @@
 .mfa-header-button svg { width: 20px; height: 20px; }
 .mfa-close, .mfa-icon-button { color: var(--color-muted); }
 .mfa-close:hover, .mfa-header-button:hover, .mfa-icon-button:hover { background: var(--color-bg); color: var(--color-fg); }
-.mfa-danger:hover { background: #e88a8a15; color: var(--color-danger); }
-.mfa-actions { gap: 0; }
-.mfa-primary, .mfa-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; border-radius: 11px; padding: 10px 16px; font-size: 14px; line-height: 1.4; font-weight: 600; cursor: pointer; }
+.mfa-primary, .mfa-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; border-radius: 11px; padding: 10px 16px; font-size: 15px; line-height: 1.4; font-weight: 600; cursor: pointer; }
 .mfa-primary { background: var(--color-send); color: var(--color-send-fg); }
 .mfa-primary:hover { filter: brightness(1.1); }
 .mfa-secondary { background: var(--color-bg); border: 1px solid var(--color-line); }
-.mfa-search { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; padding: 0 12px; min-height: 44px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); color: var(--color-muted); }
+.mfa-search { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; padding: 0 12px; min-height: 46px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); color: var(--color-muted); }
 .mfa-search svg { flex: none; }
-.mfa-search input { min-width: 0; width: 100%; min-height: 42px; outline: none; background: transparent; color: var(--color-fg); font-size: 14px; }
+.mfa-search input { min-width: 0; width: 100%; min-height: 44px; outline: none; background: transparent; color: var(--color-fg); font-size: 15px; }
 .mfa-search input::placeholder, .mfa-field::placeholder { color: var(--color-muted); opacity: .7; }
 .mfa-search:focus-within, .mfa-field:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px #6cb6ff12; }
 .mfa-account-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 12px; }
 .mfa-account { min-width: 0; overflow: hidden; border: 1px solid var(--color-line); border-radius: 13px; background: var(--color-surface); }
-.mfa-card-head { gap: 6px; padding: 12px 8px 8px 14px; }
-.mfa-account-heading { display: flex; align-items: center; gap: 9px; min-width: 0; }
-.mfa-platform-logo { display: grid; flex: none; place-items: center; width: 32px; height: 32px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-bar); color: var(--color-muted); font-size: 14px; font-weight: 650; cursor: pointer; }
-.mfa-platform-logo img { width: 19px; height: 19px; object-fit: contain; }
+.mfa-card-head { gap: 8px; padding: 10px 10px 10px 14px; }
+.mfa-platform-logo { display: grid; flex: none; place-items: center; width: 34px; height: 34px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-bar); color: var(--color-muted); font-size: 15px; font-weight: 650; cursor: pointer; }
+.mfa-platform-logo img { width: 20px; height: 20px; object-fit: contain; }
 .mfa-platform-logo [hidden] { display: none; }
-.mfa-account h3 { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.35; }
-.mfa-account-heading h3 { min-width: 0; }
-.mfa-account-name { display: inline-flex; align-items: center; gap: 7px; max-width: 100%; text-align: left; cursor: pointer; }
-.mfa-account-name span { min-width: 0; overflow-wrap: anywhere; }
-.mfa-account-name:hover, .mfa-platform-logo:hover { color: var(--color-accent); }
-.mfa-limits { display: flex; flex-wrap: wrap; gap: 4px 6px; padding: 0 14px 10px; }
-.mfa-limit { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 3px 7px; border: 1px solid transparent; border-radius: 7px; color: var(--color-muted); font-size: 12px; font-weight: 500; cursor: pointer; }
+.mfa-platform-logo:hover { color: var(--color-accent); }
+.mfa-account-more { width: 36px; height: 40px; margin-inline-start: auto; }
+.mfa-account-more[aria-expanded="true"] { background: var(--color-bg); color: var(--color-fg); }
+.mfa-account-menu { position: absolute; z-index: 2; display: grid; width: 138px; padding: 4px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-bar); box-shadow: 0 10px 28px #0007; }
+.mfa-account-menu button { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 6px 10px; border-radius: 6px; font-size: 15px; text-align: left; cursor: pointer; }
+.mfa-account-menu button:is(:hover, :focus-visible) { background: var(--color-bg); }
+.mfa-account-menu .mfa-danger { color: var(--color-danger); }
+.mfa-limits { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.mfa-limit { display: inline-flex; align-items: center; gap: 5px; min-height: 38px; padding: 4px 6px; border: 1px solid transparent; border-radius: 7px; color: var(--color-muted); font-size: 13px; font-weight: 500; cursor: pointer; }
 .mfa-limit input, .mfa-usable-filter input { flex: none; appearance: auto; width: 15px; height: 15px; color-scheme: dark; accent-color: var(--color-accent); cursor: inherit; }
 .mfa-limit:hover { background: var(--color-bg); }
 .mfa-limit:has(input:checked) { border-color: #efb77a55; background: #efb77a12; color: #efb77a; }
@@ -51,18 +51,19 @@
 .mfa-limit:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: 2px; }
 .mfa-limit span { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mfa-credentials { padding: 0 14px; }
-.mfa-credential { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; min-height: 42px; padding: 7px 2px; border-top: 1px solid var(--color-line); text-align: left; cursor: pointer; }
+.mfa-credentials h3 { margin: 0; }
+.mfa-credential { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 10px 2px; border-top: 1px solid var(--color-line); text-align: left; cursor: pointer; }
+.mfa-account-name .mfa-value { color: var(--color-accent); font-family: inherit; font-weight: 650; }
 .mfa-credential:hover .mfa-value { color: var(--color-accent); }
-.mfa-field-label { display: block; font-size: 11px; font-weight: 500; line-height: 1.5; color: var(--color-muted); }
-.mfa-value { font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
+.mfa-value { font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
 .mfa-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.mfa-account-name svg, .mfa-credential svg, .mfa-otp svg { width: 14px; height: 14px; flex: none; color: var(--color-muted); }
+.mfa-credential svg, .mfa-otp svg { width: 15px; height: 15px; color: var(--color-muted); }
 .mfa-modal button:disabled { cursor: default; opacity: .35; }
-.mfa-otp { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 5px 8px; width: 100%; padding: 8px 16px 10px 14px; border-top: 1px solid var(--color-line); background: #6cb6ff08; text-align: left; cursor: pointer; }
+.mfa-otp { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px 10px; width: 100%; padding: 11px 16px 12px; border-top: 1px solid var(--color-line); background: #6cb6ff08; text-align: left; cursor: pointer; }
 .mfa-otp:hover:not(:disabled) { background: #6cb6ff12; }
-.mfa-code { font: 650 24px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--color-accent); white-space: nowrap; }
+.mfa-code { font: 650 26px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--color-accent); white-space: nowrap; }
 .mfa-otp:disabled .mfa-code { font-size: 16px; }
-.mfa-countdown { color: var(--color-muted); font: 500 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.mfa-countdown { color: var(--color-muted); font: 500 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .mfa-progress { grid-column: 1 / -1; height: 2px; overflow: hidden; border-radius: 999px; background: #6cb6ff15; }
 .mfa-progress > span { display: block; height: 100%; width: 0; background: var(--color-accent); transition: width .25s linear; }
 .mfa-empty { grid-column: 1 / -1; padding: 32px 14px; text-align: center; color: var(--color-muted); font-size: 14px; }
@@ -91,12 +92,13 @@ textarea.mfa-field { resize: vertical; }
 .mfa-loading { padding: 40px 0; text-align: center; }
 .mfa-modal button:focus-visible, .mfa-back:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .mfa-modal .mfa-otp:focus-visible { outline-offset: -4px; }
+.mfa-modal .mfa-account-menu button:focus-visible { outline-offset: -2px; }
 @media (max-width: 720px) {
   .mfa-modal { padding: 12px; }
   .mfa-card { max-height: calc(100dvh - 24px); border-radius: 18px; }
-  .mfa-head { padding: 8px 16px; }
-  .mfa-head h2 { font-size: 18px; }
-  .mfa-body { padding: 14px 16px 18px; }
+  .mfa-head { padding: 10px 16px; }
+  .mfa-head h2 { font-size: 19px; }
+  .mfa-body { padding: 16px 16px 20px; }
   .mfa-account-list { grid-template-columns: minmax(0, 1fr); }
   .mfa-form-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
   .mfa-form-mfa { padding: 16px; }
@@ -104,11 +106,18 @@ textarea.mfa-field { resize: vertical; }
 @media (max-width: 420px) {
   .mfa-modal { padding: 0; }
   .mfa-card { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
-  .mfa-head { padding: max(8px, env(safe-area-inset-top)) 14px 8px; }
-  .mfa-body { padding: 12px 14px max(18px, env(safe-area-inset-bottom)); }
+  .mfa-head { padding: max(10px, env(safe-area-inset-top)) 14px 10px; }
+  .mfa-body { padding: 14px 14px max(20px, env(safe-area-inset-bottom)); }
   .mfa-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
   .mfa-search { grid-column: 1 / -1; }
   .mfa-search input { font-size: 16px; }
   .mfa-usable-filter { justify-self: start; }
-  .mfa-code { font-size: 22px; }
+  .mfa-code { font-size: 24px; }
+}
+@media (max-width: 360px) {
+  .mfa-body { padding-inline: 10px; }
+  .mfa-card-head { gap: 4px; padding-inline: 8px; }
+  .mfa-platform-logo, .mfa-account-more { width: 30px; }
+  .mfa-limit { gap: 4px; padding-inline: 2px; }
+  .mfa-limit input { width: 13px; height: 13px; }
 }
