@@ -31,7 +31,6 @@ let stream = null;
 let pollTimer = null;
 let tickTimer = null;
 let initialized = false;
-let currentView = "list";
 let searchQuery = "";
 let usableOnly = false;
 let nextUsableAt = Infinity;
@@ -207,7 +206,7 @@ async function fetchAccounts() {
   if (!response.ok) throw new Error(`Firebase HTTP ${response.status}`);
   accounts = normalizeAccounts(await response.json());
   writeCache();
-  if (!modal.hidden && currentView === "list") refreshAccountList();
+  if (!modal.hidden) refreshAccountList();
 }
 
 function putAccount(record, etag) {
@@ -278,7 +277,7 @@ function applyStreamEvent(event, isPatch) {
     } else put(parts, payload.data);
     accounts = normalizeAccounts(accounts);
     writeCache();
-    if (!modal.hidden && currentView === "list") refreshAccountList();
+    if (!modal.hidden) refreshAccountList();
   } catch {
     // EventSource tự kết nối lại; lần mở tiếp theo luôn tải snapshot mới.
   }
@@ -390,8 +389,8 @@ modal.innerHTML = `
       <button type="button" role="menuitem" tabindex="-1" data-mfa-edit>${icon("edit")} Sửa</button>
       <button class="mfa-danger" type="button" role="menuitem" tabindex="-1" data-mfa-delete>${icon("trash")} Xóa</button>
     </div>
-    <div class="mfa-week-overlay" hidden>
-      <section class="mfa-week-dialog" role="dialog" aria-modal="true" aria-labelledby="mfa-week-title">
+    <div class="mfa-child-overlay mfa-week-overlay" hidden>
+      <section class="mfa-child-dialog mfa-week-dialog" role="dialog" aria-modal="true" aria-labelledby="mfa-week-title">
         <h3 id="mfa-week-title">Lượt tuần mở lại sau</h3>
         <form data-mfa-week-form>
           <div class="mfa-week-fields">
@@ -405,6 +404,7 @@ modal.innerHTML = `
     </div>
     <div class="mfa-toast" role="status" aria-live="polite" hidden></div>
   </section>
+  <div class="mfa-child-overlay mfa-setup-overlay" hidden></div>
 `;
 document.body.append(modal);
 const body = modal.querySelector("[data-mfa-body]");
@@ -413,12 +413,14 @@ const head = modal.querySelector(".mfa-head");
 const accountMenu = modal.querySelector("#mfa-account-menu");
 const menuItems = [...accountMenu.querySelectorAll("button")];
 const weekOverlay = modal.querySelector(".mfa-week-overlay");
+const setupOverlay = modal.querySelector(".mfa-setup-overlay");
 const weekForm = weekOverlay.querySelector("[data-mfa-week-form]");
 const weekDays = weekForm.elements.namedItem("days");
 const weekHours = weekForm.elements.namedItem("hours");
 const weekError = weekForm.querySelector(".mfa-week-error");
 let accountMenuTrigger = null;
 let weekAccountId = null;
+let dismissSetup = null;
 let toastTimer = null;
 
 function notify(message) {
@@ -514,8 +516,13 @@ async function saveLimit(accountId, field, deadline) {
     notify(`Không lưu được hạn mức. ${error.message}`);
   } finally {
     pendingLimits.delete(key);
-    if (!modal.hidden && currentView === "list") refreshAccountList();
+    if (!modal.hidden) refreshAccountList();
   }
+}
+
+function setAccountListInert(inert) {
+  body.inert = inert;
+  head.inert = inert;
 }
 
 function openWeekEditor(accountId) {
@@ -523,8 +530,7 @@ function openWeekEditor(accountId) {
   weekAccountId = accountId;
   weekForm.reset();
   weekError.textContent = "";
-  body.inert = true;
-  head.inert = true;
+  setAccountListInert(true);
   weekOverlay.hidden = false;
   weekDays.focus({ preventScroll: true });
 }
@@ -534,8 +540,7 @@ function closeWeekEditor(restoreFocus = false) {
   const accountId = weekAccountId;
   weekAccountId = null;
   weekOverlay.hidden = true;
-  body.inert = false;
-  head.inert = false;
+  setAccountListInert(false);
   if (restoreFocus) {
     const input = findAccountCard(accountId)?.querySelector('[data-mfa-limit="limitWeek"]');
     (input || body.querySelector("[data-mfa-search]"))?.focus({ preventScroll: true });
@@ -564,7 +569,7 @@ weekForm.addEventListener("submit", (event) => {
 
 function startTicker() {
   clearInterval(tickTimer);
-  if (modal.hidden || modal.dataset.overlayState === "closing" || currentView !== "list") return;
+  if (modal.hidden || modal.dataset.overlayState === "closing") return;
   async function tick() {
     const now = Date.now();
     if (now >= nextUsableAt) {
@@ -676,7 +681,7 @@ accountMenu.querySelector("[data-mfa-delete]").addEventListener("click", async (
   } finally {
     deletingAccounts.delete(account.id);
     trigger.disabled = false;
-    if (!modal.hidden && currentView === "list") refreshAccountList();
+    if (!modal.hidden) refreshAccountList();
   }
 });
 
@@ -801,7 +806,6 @@ function refreshAccountList(now = Date.now()) {
 function renderList() {
   closeAccountMenu();
   closeWeekEditor();
-  currentView = "list";
   clearInterval(tickTimer);
   body.innerHTML = `
     <div class="mfa-toolbar">
@@ -826,23 +830,23 @@ function renderList() {
 function renderSetup(existing = null) {
   closeAccountMenu();
   closeWeekEditor();
-  currentView = "setup";
-  clearInterval(tickTimer);
-  body.innerHTML = `
-    <div class="mfa-form-top"><button class="mfa-back" data-mfa-back type="button">← Quay lại</button></div>
-    <form class="mfa-form" data-mfa-form autocomplete="off">
-      <div class="mfa-form-heading"><h3>${existing ? "Sửa tài khoản" : "Thêm tài khoản"}</h3></div>
-      <div class="mfa-form-grid">
-        <label class="mfa-form-label">Nền tảng <span class="mfa-required">*</span><input data-mfa-platform class="mfa-field" type="text" list="mfa-platforms" placeholder="Gmail, ChatGPT, Facebook…" maxlength="100" required><datalist id="mfa-platforms"><option value="Gmail"><option value="ChatGPT"><option value="Facebook"><option value="Instagram"><option value="Microsoft"><option value="Claude"><option value="GitHub"></datalist></label>
-        <label class="mfa-form-label">Email / tên đăng nhập<input data-mfa-email class="mfa-field" type="text" inputmode="email" placeholder="email@example.com" spellcheck="false" autocapitalize="none" autocomplete="off"></label>
-        <label class="mfa-form-label mfa-form-wide">Mật khẩu<input data-mfa-password class="mfa-field mfa-mono" type="text" placeholder="Nhập mật khẩu" spellcheck="false" autocapitalize="none" autocomplete="off"></label>
-      </div>
-      <div class="mfa-form-mfa"><div class="mfa-row"><h4>${icon("key")} Xác thực hai bước</h4><span class="mfa-optional">Tùy chọn</span></div><label class="mfa-form-label">Khóa MFA / mã thiết lập<textarea data-mfa-secret class="mfa-field mfa-mono" rows="2" spellcheck="false" autocapitalize="none" placeholder="Khóa Base32 hoặc đường dẫn otpauth://"></textarea></label><label class="mfa-file">${icon("plus")}<span>Đọc khóa từ ảnh QR</span><input data-mfa-file type="file" accept="image/*" aria-label="Chọn ảnh QR"></label><p class="mfa-meta" data-mfa-qr-status role="status"></p></div>
-      <p class="mfa-error" data-mfa-error role="alert"></p>
-      <div class="mfa-form-footer"><button class="mfa-secondary" data-mfa-cancel type="button">Hủy</button><button class="mfa-primary" data-mfa-save type="submit">${icon("check")}<span>${existing ? "Lưu thay đổi" : "Lưu tài khoản"}</span></button></div>
-    </form>
+  setupOverlay.innerHTML = `
+    <section class="mfa-child-dialog mfa-setup-dialog" role="dialog" aria-modal="true" aria-labelledby="mfa-setup-title" tabindex="-1">
+      <form data-mfa-form autocomplete="off">
+        <h3 id="mfa-setup-title">${existing ? "Sửa tài khoản" : "Thêm tài khoản"}</h3>
+        <div class="mfa-form-grid">
+          <label class="mfa-form-label">Nền tảng <span class="mfa-required">*</span><input data-mfa-platform class="mfa-field" type="text" list="mfa-platforms" placeholder="Gmail, ChatGPT, Facebook…" maxlength="100" required><datalist id="mfa-platforms"><option value="Gmail"><option value="ChatGPT"><option value="Facebook"><option value="Instagram"><option value="Microsoft"><option value="Claude"><option value="GitHub"></datalist></label>
+          <label class="mfa-form-label">Email / tên đăng nhập<input data-mfa-email class="mfa-field" type="text" inputmode="email" placeholder="email@example.com" spellcheck="false" autocapitalize="none" autocomplete="off"></label>
+          <label class="mfa-form-label mfa-form-wide">Mật khẩu<input data-mfa-password class="mfa-field mfa-mono" type="text" placeholder="Nhập mật khẩu" spellcheck="false" autocapitalize="none" autocomplete="off"></label>
+        </div>
+        <div class="mfa-form-mfa"><div class="mfa-row"><h4>${icon("key")} Xác thực hai bước</h4><span class="mfa-optional">Tùy chọn</span></div><label class="mfa-form-label">Khóa MFA / mã thiết lập<textarea data-mfa-secret class="mfa-field mfa-mono" rows="2" spellcheck="false" autocapitalize="none" placeholder="Khóa Base32 hoặc đường dẫn otpauth://"></textarea></label><label class="mfa-file">${icon("plus")}<span>Đọc khóa từ ảnh QR</span><input data-mfa-file type="file" accept="image/*" aria-label="Chọn ảnh QR"></label><p class="mfa-meta" data-mfa-qr-status role="status"></p></div>
+        <p class="mfa-error" data-mfa-error role="alert"></p>
+        <div class="mfa-form-footer"><button class="mfa-secondary" data-mfa-cancel type="button">Hủy</button><button class="mfa-primary" data-mfa-save type="submit">${icon("check")}<span>${existing ? "Lưu thay đổi" : "Lưu tài khoản"}</span></button></div>
+      </form>
+    </section>
   `;
-  const form = body.querySelector("[data-mfa-form]");
+  const form = setupOverlay.querySelector("[data-mfa-form]");
+  const formError = form.querySelector("[data-mfa-error]");
   const platform = form.querySelector("[data-mfa-platform]");
   const email = form.querySelector("[data-mfa-email]");
   const password = form.querySelector("[data-mfa-password]");
@@ -854,9 +858,16 @@ function renderSetup(existing = null) {
   let otpOptions = existing ? { algorithm: existing.algorithm, digits: existing.digits, period: existing.period } : { algorithm: "SHA1", digits: 6, period: 30 };
   let saving = false;
   let scanVersion = 0;
-  function backToList() { if (!saving) { renderList(); body.querySelector("[data-mfa-add]").focus(); } }
-  body.querySelector("[data-mfa-back]").addEventListener("click", backToList);
-  form.querySelector("[data-mfa-cancel]").addEventListener("click", backToList);
+  function closeSetup() {
+    dismissSetup = null;
+    setupOverlay.hidden = true;
+    setupOverlay.replaceChildren();
+    panel.inert = false;
+    const trigger = existing ? findAccountCard(existing.id)?.querySelector("[data-mfa-more]") : body.querySelector("[data-mfa-add]");
+    (trigger || body.querySelector("[data-mfa-search]"))?.focus({ preventScroll: true });
+  }
+  dismissSetup = () => { if (!saving) closeSetup(); };
+  form.querySelector("[data-mfa-cancel]").addEventListener("click", dismissSetup);
   secret.addEventListener("input", () => {
     scanVersion += 1;
     form.querySelector("[data-mfa-qr-status]").textContent = "";
@@ -882,19 +893,24 @@ function renderSetup(existing = null) {
       if (!platform.value.trim()) platform.value = scanned.issuer;
       const candidate = normalizeAccount(scanned);
       if (!email.value.trim() && candidate.email) email.value = candidate.email;
-      showError("");
+      formError.textContent = "";
       form.querySelector("[data-mfa-qr-status]").textContent = "Đã đọc khóa MFA từ QR.";
     } catch (error) {
-      if (form.isConnected && version === scanVersion) showError(error instanceof Error ? error.message : "Không đọc được QR.");
+      if (form.isConnected && version === scanVersion) formError.textContent = error instanceof Error ? error.message : "Không đọc được QR.";
     }
   });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (saving) return;
     const button = form.querySelector("[data-mfa-save]");
+    saving = true;
+    scanVersion += 1;
+    formError.textContent = "";
+    form.querySelectorAll("input, textarea, button").forEach((input) => { input.disabled = true; });
+    form.closest("[role='dialog']").focus({ preventScroll: true });
+    button.querySelector("span").textContent = "Đang lưu…";
     try {
-      showError("");
-      if (existing && !accounts[existing.id]) throw new Error("Tài khoản đã bị xóa trên thiết bị khác. Hãy quay lại danh sách.");
+      if (existing && !accounts[existing.id]) throw new Error("Tài khoản đã bị xóa trên thiết bị khác.");
       const rawSecret = secret.value.trim();
       let otp = { ...otpOptions, secret: "" };
       if (rawSecret) {
@@ -910,26 +926,25 @@ function renderSetup(existing = null) {
         label: [platform.value.trim(), email.value.trim()].filter(Boolean).join(":"),
         issuer: platform.value.trim(),
       };
-      if (!account.platform) { platform.focus(); throw new Error("Vui lòng nhập nền tảng."); }
-      saving = true;
-      scanVersion += 1;
-      form.querySelectorAll("input, textarea, button").forEach((input) => { input.disabled = true; });
-      button.querySelector("span").textContent = "Đang lưu…";
+      if (!account.platform) throw new Error("Vui lòng nhập nền tảng.");
       if (existing) await updateAccount(existing.id, account);
       else await addAccount(account);
       // Bắt đầu nhận thay đổi trên thiết bị khác sau khi kết nối lại thành công.
       if (!initialized) initializeSync().catch(() => {});
-      if (form.isConnected) { searchQuery = ""; renderList(); }
+      if (form.isConnected) { refreshAccountList(); closeSetup(); }
       notify(existing ? "Đã cập nhật tài khoản" : "Đã thêm tài khoản");
     } catch (error) {
       saving = false;
       if (!form.isConnected) return;
       form.querySelectorAll("input, textarea, button").forEach((input) => { input.disabled = false; });
       button.querySelector("span").textContent = existing ? "Lưu thay đổi" : "Lưu tài khoản";
-      showError(error instanceof Error ? error.message : "Không lưu được tài khoản.");
+      formError.textContent = error instanceof Error ? error.message : "Không lưu được tài khoản.";
+      if (!platform.value.trim()) platform.focus({ preventScroll: true });
+      else if (document.activeElement === form.closest("[role='dialog']")) button.focus({ preventScroll: true });
     }
   });
-  body.scrollTop = 0;
+  panel.inert = true;
+  setupOverlay.hidden = false;
   platform.focus({ preventScroll: true });
 }
 
@@ -942,13 +957,12 @@ async function openAuthenticator() {
   modal.hidden = false;
   modal.inert = false;
   animateOverlay(modal, "enter", "dialog");
-  currentView = "list";
   body.innerHTML = `<p class="mfa-help mfa-loading">Đang tải tài khoản…</p>`;
   modal.querySelector(".mfa-close").focus();
   try {
     await initializeSync();
     await fetchAccounts();
-    if (version === modalVersion && !modal.hidden && currentView === "list") renderList();
+    if (version === modalVersion && !modal.hidden) renderList();
   } catch (error) {
     if (version !== modalVersion || modal.hidden) return;
     renderList();
@@ -958,6 +972,7 @@ async function openAuthenticator() {
 
 function closeAuthenticator() {
   if (modal.hidden || modal.dataset.overlayState === "closing") return;
+  if (dismissSetup) { dismissSetup(); return; }
   closeAccountMenu();
   closeWeekEditor();
   const version = ++modalVersion;
@@ -971,6 +986,7 @@ function closeAuthenticator() {
 }
 
 modal.querySelector(".mfa-close").addEventListener("click", closeAuthenticator);
+setupOverlay.addEventListener("click", (event) => { if (event.target === setupOverlay) dismissSetup?.(); });
 modal.addEventListener("click", (event) => {
   if (event.target !== modal) return;
   if (weekAccountId !== null) closeWeekEditor(true);
@@ -987,7 +1003,8 @@ window.addEventListener("keydown", (event) => {
   if (modal.hidden || modal.dataset.overlayState === "closing") return;
   if (event.key === "Escape") {
     event.preventDefault();
-    if (weekAccountId !== null) closeWeekEditor(true);
+    if (dismissSetup) dismissSetup();
+    else if (weekAccountId !== null) closeWeekEditor(true);
     else if (accountMenuTrigger) closeAccountMenu(true);
     else closeAuthenticator();
     return;
@@ -1008,11 +1025,11 @@ window.addEventListener("keydown", (event) => {
     }
   }
   if (event.key !== "Tab") return;
-  const scope = weekAccountId !== null ? weekOverlay : modal;
-  const focusable = [...scope.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')].filter((element) => element.getClientRects().length);
+  const scope = dismissSetup ? setupOverlay : weekAccountId !== null ? weekOverlay : modal;
+  const focusable = [...scope.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')].filter((element) => !element.closest("[inert]") && element.getClientRects().length);
   const first = focusable[0];
   const last = focusable.at(-1);
-  if (!first) { event.preventDefault(); panel.focus(); return; }
+  if (!first) { event.preventDefault(); (scope === modal ? panel : scope.querySelector("[role='dialog']")).focus(); return; }
   if (event.shiftKey && (document.activeElement === first || !scope.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
   else if (!event.shiftKey && (document.activeElement === last || !scope.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
 });
