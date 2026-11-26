@@ -7,6 +7,8 @@ const LEGACY_VALUE_KEY = "my-documents-local-totp-v1";
 const LEGACY_DB = "my-documents-local-vault";
 const LEGACY_STORE = "keys";
 const LEGACY_KEY_ID = "totp-aes-v1";
+const accountDateFormat = new Intl.DateTimeFormat("vi-VN", { dateStyle: "short" });
+const pendingLimits = new Map();
 
 let accounts = normalizeAccounts(readCache());
 let databaseUrl = "";
@@ -136,6 +138,16 @@ function firebaseEndpoint(child = "") {
   return `${databaseUrl}/${FIREBASE_PATH}${suffix}.json`;
 }
 
+function accountCreatedAt(value, id) {
+  const saved = Number(value.createdAt);
+  if (saved > 0 && saved <= 8.64e15) return saved;
+  // Older account IDs start with the time they were generated, in base 36.
+  const prefix = /^([0-9a-z]{8})[0-9a-z]{1,6}$/.exec(id)?.[1];
+  const timestamp = Number.parseInt(prefix, 36);
+  return timestamp >= Date.UTC(2000, 0, 1) && timestamp <= (Number(value.updatedAt) || Date.now())
+    ? timestamp : 0;
+}
+
 function normalizeAccount(value, id = value?.id) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const label = String(value.label || value.issuer || "Tài khoản");
@@ -143,6 +155,9 @@ function normalizeAccount(value, id = value?.id) {
   return {
     ...value,
     id,
+    createdAt: accountCreatedAt(value, id),
+    limit5h: value.limit5h === true,
+    limitWeek: value.limitWeek === true,
     platform: String(value.platform || (value.issuer && value.issuer !== "MFA" ? value.issuer : label.split(":")[0])),
     email: String(value.email ?? (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(legacyEmail) ? legacyEmail : "")),
     password: String(value.password ?? ""),
@@ -172,18 +187,48 @@ async function fetchAccounts() {
   if (!modal.hidden && currentView === "list") refreshAccountList();
 }
 
-async function saveAccount(account) {
-  if (!databaseUrl) await loadFirebaseConfig();
-  const id = account.id || `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
-  const record = { ...normalizeAccount(account, id), updatedAt: Date.now() };
-  const response = await fetch(firebaseEndpoint(id), {
+function putAccount(record, etag) {
+  return fetch(firebaseEndpoint(record.id), {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(etag ? { "If-Match": etag } : {}) },
     body: JSON.stringify(record),
   });
+}
+
+async function addAccount(account) {
+  if (!databaseUrl) await loadFirebaseConfig();
+  const now = Date.now();
+  const id = account.id || `${now.toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+  const record = { ...normalizeAccount(account, id), createdAt: accountCreatedAt(account, id) || now, updatedAt: now };
+  const response = await putAccount(record, "null_etag");
   if (!response.ok) throw new Error(`Firebase HTTP ${response.status}`);
   accounts[id] = record;
   writeCache();
+}
+
+async function updateAccount(id, changes) {
+  if (!databaseUrl) await loadFirebaseConfig();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const snapshot = await fetch(firebaseEndpoint(id), {
+      headers: { "X-Firebase-ETag": "true" },
+      cache: "no-store",
+    });
+    if (!snapshot.ok) throw new Error(`Firebase HTTP ${snapshot.status}`);
+    const current = normalizeAccount(await snapshot.json(), id);
+    if (!current) throw new Error("Tài khoản đã bị xóa.");
+    const etag = snapshot.headers.get("ETag");
+    if (!etag) throw new Error("Không đọc được phiên bản tài khoản.");
+    const updatedAt = Date.now();
+    const response = await putAccount({ ...current, ...changes, updatedAt }, etag);
+    if (response.status === 412) continue;
+    if (!response.ok) throw new Error(`Firebase HTTP ${response.status}`);
+    if (accounts[id]) {
+      accounts[id] = { ...accounts[id], ...changes, createdAt: current.createdAt, updatedAt };
+      writeCache();
+    }
+    return;
+  }
+  throw new Error("Tài khoản vừa được cập nhật. Hãy thử lại.");
 }
 
 async function removeAccount(id) {
@@ -260,7 +305,7 @@ async function migrateLegacyAccount() {
       base64ToBytes(record.data),
     );
     const account = JSON.parse(decoder.decode(plaintext));
-    if (account.secret) await saveAccount(account);
+    if (account.secret) await addAccount(account);
     localStorage.removeItem(LEGACY_VALUE_KEY);
   } catch {
     // Giữ dữ liệu cũ nguyên vẹn nếu không thể chuyển đổi.
@@ -427,6 +472,10 @@ function createAccountCard(account) {
       <div class="mfa-account-heading"><span class="mfa-platform-icon" data-mfa-avatar></span><div><h3><button class="mfa-platform-value" data-mfa-platform type="button" aria-label="Sao chép nền tảng" title="Sao chép nền tảng"></button></h3><span class="mfa-account-badge" data-mfa-badge></span></div></div>
       <div class="mfa-actions"><button class="mfa-icon-button" type="button" data-mfa-edit aria-label="Sửa tài khoản" title="Sửa tài khoản">${icon("edit")}</button><button class="mfa-icon-button mfa-danger" type="button" data-mfa-delete aria-label="Xóa tài khoản" title="Xóa tài khoản">${icon("trash")}</button></div>
     </div>
+    <div class="mfa-limits" role="group" aria-label="Hạn mức">
+      <label class="mfa-limit"><input type="checkbox" data-mfa-limit="limit5h"><span>Hết lượt 5 giờ</span></label>
+      <label class="mfa-limit"><input type="checkbox" data-mfa-limit="limitWeek"><span>Hết lượt tuần</span></label>
+    </div>
     <div class="mfa-credentials" data-mfa-credentials></div>
     <div class="mfa-otp" data-mfa-otp>
       <div class="mfa-row"><span class="mfa-field-label">Mã xác thực</span><span class="mfa-countdown" data-mfa-countdown></span></div>
@@ -437,7 +486,34 @@ function createAccountCard(account) {
   card.querySelector("[data-mfa-platform]").textContent = account.platform;
   card.querySelector("[data-mfa-platform]").addEventListener("click", (event) => copyValue(account.platform, "Nền tảng", event.currentTarget));
   card.querySelector("[data-mfa-avatar]").textContent = account.platform.slice(0, 1).toUpperCase();
-  card.querySelector("[data-mfa-badge]").textContent = account.secret ? "Có MFA" : "Tài khoản";
+  card.querySelector("[data-mfa-badge]").textContent = [
+    account.secret ? "Có MFA" : "Tài khoản",
+    account.createdAt ? `Thêm ngày ${accountDateFormat.format(account.createdAt)}` : "",
+  ].filter(Boolean).join(" · ");
+  for (const input of card.querySelectorAll("[data-mfa-limit]")) {
+    const field = input.dataset.mfaLimit;
+    const key = `${account.id}/${field}`;
+    input.checked = pendingLimits.get(key) ?? account[field];
+    if (pendingLimits.has(key)) input.setAttribute("aria-busy", "true");
+    input.addEventListener("change", async () => {
+      if (pendingLimits.has(key)) {
+        input.checked = pendingLimits.get(key);
+        return;
+      }
+      const checked = input.checked;
+      pendingLimits.set(key, checked);
+      input.setAttribute("aria-busy", "true");
+      try {
+        await updateAccount(account.id, { [field]: checked });
+        if (!initialized) initializeSync().catch(() => {});
+      } catch (error) {
+        notify(`Không lưu được hạn mức. ${error.message}`);
+      } finally {
+        pendingLimits.delete(key);
+        if (!modal.hidden && currentView === "list") refreshAccountList();
+      }
+    });
+  }
   let colorIndex = 0;
   for (const char of account.platform) colorIndex = (colorIndex + char.codePointAt(0)) % 5;
   card.querySelector("[data-mfa-avatar]").dataset.color = colorIndex;
@@ -473,13 +549,14 @@ function refreshAccountList() {
   const query = searchQuery.trim().toLocaleLowerCase("vi");
   const all = Object.values(accounts).map((value) => normalizeAccount(value)).filter(Boolean);
   const sorted = all.filter((account) => `${account.platform} ${account.email} ${account.label}`.toLocaleLowerCase("vi").includes(query))
-    .sort((a, b) => a.platform.localeCompare(b.platform, "vi") || a.email.localeCompare(b.email, "vi"));
+    .sort((a, b) => b.createdAt - a.createdAt || a.platform.localeCompare(b.platform, "vi") || a.email.localeCompare(b.email, "vi"));
   body.querySelector("[data-mfa-total]").textContent = `${all.length} tài khoản`;
   body.querySelector("[data-mfa-results]").textContent = query ? `${sorted.length} kết quả` : "";
   const focused = document.activeElement;
   const focusedCard = focused?.closest("[data-mfa-account]");
   const focusId = focusedCard?.dataset.mfaAccount;
   const focusLabel = focusId ? focused.getAttribute("aria-label") : null;
+  const focusLimit = focused?.dataset.mfaLimit;
   list.replaceChildren();
   if (!sorted.length) {
     const empty = document.createElement("div");
@@ -491,9 +568,11 @@ function refreshAccountList() {
   } else {
     for (const account of sorted) list.append(createAccountCard(account));
   }
-  if (focusId && focusLabel) {
+  if (focusId && (focusLabel || focusLimit)) {
     const card = [...list.children].find((element) => element.dataset.mfaAccount === focusId);
-    const replacement = card && [...card.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === focusLabel);
+    const replacement = card && (focusLimit
+      ? card.querySelector(`[data-mfa-limit="${focusLimit}"]`)
+      : [...card.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === focusLabel));
     (replacement || body.querySelector("[data-mfa-search]")).focus({ preventScroll: true });
   }
   startTicker();
@@ -594,7 +673,6 @@ function renderSetup(existing = null) {
         otp.secret = normalizeBase32(otp.secret);
       }
       const account = {
-        ...(existing ? accounts[existing.id] : {}),
         ...otp,
         platform: platform.value.trim(),
         email: email.value.trim(),
@@ -607,7 +685,8 @@ function renderSetup(existing = null) {
       scanVersion += 1;
       form.querySelectorAll("input, textarea, button").forEach((input) => { input.disabled = true; });
       button.querySelector("span").textContent = "Đang lưu…";
-      await saveAccount(account);
+      if (existing) await updateAccount(existing.id, account);
+      else await addAccount(account);
       // Bắt đầu nhận thay đổi trên thiết bị khác sau khi kết nối lại thành công.
       if (!initialized) initializeSync().catch(() => {});
       if (form.isConnected) { searchQuery = ""; renderList(); }
