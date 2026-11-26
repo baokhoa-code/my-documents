@@ -549,7 +549,6 @@ function closeWeekEditor(restoreFocus = false) {
 
 weekForm.addEventListener("input", () => { weekError.textContent = ""; });
 weekForm.querySelector("[data-mfa-week-cancel]").addEventListener("click", () => closeWeekEditor(true));
-weekOverlay.addEventListener("click", (event) => { if (event.target === weekOverlay) closeWeekEditor(true); });
 weekForm.addEventListener("submit", (event) => {
   event.preventDefault();
   if (weekAccountId === null) return;
@@ -986,12 +985,6 @@ function closeAuthenticator() {
 }
 
 modal.querySelector(".mfa-close").addEventListener("click", closeAuthenticator);
-setupOverlay.addEventListener("click", (event) => { if (event.target === setupOverlay) dismissSetup?.(); });
-modal.addEventListener("click", (event) => {
-  if (event.target !== modal) return;
-  if (weekAccountId !== null) closeWeekEditor(true);
-  else closeAuthenticator();
-});
 document.addEventListener("pointerdown", (event) => {
   if (accountMenuTrigger && !accountMenu.contains(event.target) && !accountMenuTrigger.contains(event.target)) closeAccountMenu();
 });
@@ -1001,12 +994,9 @@ function preventAccountMenuScroll(event) {
 window.addEventListener("resize", () => closeAccountMenu(true));
 window.addEventListener("keydown", (event) => {
   if (modal.hidden || modal.dataset.overlayState === "closing") return;
-  if (event.key === "Escape") {
+  if (event.key === "Escape" && accountMenuTrigger) {
     event.preventDefault();
-    if (dismissSetup) dismissSetup();
-    else if (weekAccountId !== null) closeWeekEditor(true);
-    else if (accountMenuTrigger) closeAccountMenu(true);
-    else closeAuthenticator();
+    closeAccountMenu(true);
     return;
   }
   if (accountMenuTrigger && accountMenu.contains(document.activeElement)) {
