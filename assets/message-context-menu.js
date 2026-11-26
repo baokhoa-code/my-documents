@@ -21,6 +21,21 @@ export function isMessageBubbleTarget(row, target) {
   return Boolean(bubble?.contains(target));
 }
 
+export function isNativeMessageLink(target) {
+  return Boolean(target.closest?.('a.chat-link[href]'));
+}
+
+export function getSelectedMessageText(row) {
+  const article = row?.querySelector('article');
+  const selection = window.getSelection();
+  if (!article || !selection || selection.isCollapsed) return '';
+
+  for (let index = 0; index < selection.rangeCount; index++) {
+    if (selection.getRangeAt(index).intersectsNode(article)) return selection.toString();
+  }
+  return '';
+}
+
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const holdFeedback = new WeakMap();
 const hiddenMessages = new WeakMap();
@@ -194,6 +209,7 @@ function openMessageMenu(event) {
 
   const message = target.closest(MESSAGE_SELECTOR);
   if (!message || !message.closest("[data-thread]") || !isMessageBubbleTarget(message, target)) return;
+  if (isNativeMessageLink(target)) return;
 
   const optionsButton = message.querySelector(OPTIONS_SELECTOR);
   if (!(optionsButton instanceof HTMLButtonElement)) return;

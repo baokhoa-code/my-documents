@@ -244,6 +244,14 @@ html.mobile-message-menus [data-thread] {
     linear-gradient(180deg, rgba(255, 255, 255, 0.008), transparent 24%);
 }
 
+html:not(.mobile-message-menus) [data-thread] {
+  scrollbar-gutter: stable;
+}
+
+body:has(> .desktop-message-menu) [data-thread] {
+  overflow-y: hidden;
+}
+
 .message-list {
   width: 100%;
   max-width: 820px;
