@@ -363,7 +363,7 @@ modal.hidden = true;
 modal.innerHTML = `
   <section class="mfa-card" role="dialog" aria-modal="true" aria-labelledby="mfa-title" tabindex="-1">
     <header class="mfa-head">
-      <div class="mfa-heading"><span class="mfa-heading-icon">${icon("key")}</span><div><h2 id="mfa-title">Tài khoản & mật khẩu</h2><p class="mfa-meta">Lưu tài khoản · Mã xác thực tự cập nhật</p></div></div>
+      <h2 id="mfa-title">Tài khoản</h2>
       <button class="mfa-close" type="button" aria-label="Đóng quản lý tài khoản">${icon("close")}</button>
     </header>
     <div class="mfa-body" data-mfa-body></div>
@@ -448,22 +448,27 @@ function startTicker() {
       if (!account || !card.isConnected) continue;
       refreshLimit5h(card, account, now);
       if (!account.secret) continue;
+      const codeValue = card.querySelector("[data-mfa-code]");
+      const copyCode = card.querySelector("[data-mfa-copy-code]");
+      const countdown = card.querySelector("[data-mfa-countdown]");
+      const progress = card.querySelector("[data-mfa-progress]");
       try {
         const code = await generateTotp(account);
         if (!card.isConnected) continue;
         const remaining = account.period - (Math.floor(Date.now() / 1000) % account.period);
-        const button = card.querySelector("[data-mfa-code]");
-        button.textContent = code.length === 6 ? `${code.slice(0, 3)} ${code.slice(3)}` : `${code.slice(0, 4)} ${code.slice(4)}`;
-        button.dataset.code = code;
-        button.disabled = false;
-        card.querySelector("[data-mfa-progress]").style.width = `${(remaining / account.period) * 100}%`;
-        card.querySelector("[data-mfa-countdown]").textContent = `${remaining}s`;
+        const split = code.length / 2;
+        codeValue.textContent = `${code.slice(0, split)} ${code.slice(split)}`;
+        copyCode.dataset.code = code;
+        copyCode.disabled = false;
+        progress.style.width = `${(remaining / account.period) * 100}%`;
+        countdown.textContent = `${remaining}s`;
       } catch {
-        const button = card.querySelector("[data-mfa-code]");
-        button.textContent = "Lỗi mã";
-        button.disabled = true;
-        delete button.dataset.code;
-        card.querySelector("[data-mfa-countdown]").textContent = "Kiểm tra khóa MFA";
+        if (!card.isConnected) continue;
+        codeValue.textContent = "Lỗi mã";
+        copyCode.disabled = true;
+        delete copyCode.dataset.code;
+        progress.style.width = "0";
+        countdown.textContent = "";
       }
     }
   }
@@ -471,32 +476,16 @@ function startTicker() {
   tick();
 }
 
-function credentialRow(label, value, mono = false) {
-  const row = document.createElement("div");
+function credentialRow(label, value) {
+  const row = document.createElement("button");
   row.className = "mfa-credential";
-  const text = document.createElement("button");
-  text.type = "button";
-  text.className = "mfa-credential-content";
-  text.setAttribute("aria-label", `Bấm để sao chép ${label.toLowerCase()}`);
-  text.title = `Sao chép ${label.toLowerCase()}`;
-  text.disabled = !value;
-  text.addEventListener("click", () => copyValue(value, label, text));
-  const caption = document.createElement("span");
-  caption.className = "mfa-field-label";
-  caption.textContent = label;
-  const content = document.createElement("span");
-  content.className = `mfa-value${mono ? " mfa-mono" : ""}${value ? "" : " mfa-value-empty"}`;
-  content.textContent = value || "Chưa thêm";
-  text.append(caption, content);
-  const copy = document.createElement("button");
-  copy.type = "button";
-  copy.className = "mfa-copy";
-  copy.setAttribute("aria-label", `Sao chép ${label.toLowerCase()}`);
-  copy.title = copy.getAttribute("aria-label");
-  copy.innerHTML = icon("copy");
-  copy.disabled = !value;
-  copy.addEventListener("click", () => copyValue(value, label, copy));
-  row.append(text, copy);
+  row.type = "button";
+  row.title = `Sao chép ${label.toLowerCase()}`;
+  row.setAttribute("aria-label", row.title);
+  row.innerHTML = `<span class="mfa-field-label"></span><span class="mfa-value mfa-mono"></span>${icon("copy")}`;
+  row.querySelector(".mfa-field-label").textContent = label;
+  row.querySelector(".mfa-value").textContent = value;
+  row.addEventListener("click", () => copyValue(value, label, row));
   return row;
 }
 
@@ -506,7 +495,10 @@ function createAccountCard(account) {
   card.dataset.mfaAccount = account.id;
   card.innerHTML = `
     <div class="mfa-card-head">
-      <div class="mfa-account-heading"><span class="mfa-platform-icon" data-mfa-avatar></span><div><h3><button class="mfa-platform-value" data-mfa-platform type="button" aria-label="Sao chép nền tảng" title="Sao chép nền tảng"></button></h3><span class="mfa-account-badge" data-mfa-badge></span></div></div>
+      <div class="mfa-account-heading">
+        <h3><button class="mfa-account-name" data-mfa-name type="button"><span></span>${icon("copy")}</button></h3>
+        <div class="mfa-account-meta"><button data-mfa-platform type="button" aria-label="Sao chép nền tảng" title="Sao chép nền tảng"></button><time data-mfa-date title="Ngày thêm"></time></div>
+      </div>
       <div class="mfa-actions"><button class="mfa-icon-button" type="button" data-mfa-edit aria-label="Sửa tài khoản" title="Sửa tài khoản">${icon("edit")}</button><button class="mfa-icon-button mfa-danger" type="button" data-mfa-delete aria-label="Xóa tài khoản" title="Xóa tài khoản">${icon("trash")}</button></div>
     </div>
     <div class="mfa-limits" role="group" aria-label="Hạn mức">
@@ -515,19 +507,32 @@ function createAccountCard(account) {
       <p class="mfa-limit-remaining" data-mfa-limit-remaining hidden></p>
     </div>
     <div class="mfa-credentials" data-mfa-credentials></div>
-    <div class="mfa-otp" data-mfa-otp>
-      <div class="mfa-row"><span class="mfa-field-label">Mã xác thực</span><span class="mfa-countdown" data-mfa-countdown></span></div>
-      <div class="mfa-row"><button class="mfa-code" type="button" data-mfa-code disabled aria-label="Sao chép mã xác thực">··· ···</button><button class="mfa-copy" type="button" data-mfa-copy-code aria-label="Sao chép code" title="Sao chép code">${icon("copy")}</button></div>
-      <div class="mfa-progress"><span data-mfa-progress></span></div>
-    </div>
+    ${account.secret ? `
+      <button class="mfa-otp" type="button" data-mfa-copy-code aria-label="Sao chép mã xác thực" title="Sao chép mã xác thực" disabled>
+        <span class="mfa-field-label">Mã xác thực</span>
+        <span class="mfa-code" data-mfa-code>··· ···</span>
+        <span class="mfa-countdown" data-mfa-countdown></span>
+        ${icon("copy")}
+        <span class="mfa-progress" aria-hidden="true"><span data-mfa-progress></span></span>
+      </button>` : ""}
   `;
-  card.querySelector("[data-mfa-platform]").textContent = account.platform;
-  card.querySelector("[data-mfa-platform]").addEventListener("click", (event) => copyValue(account.platform, "Nền tảng", event.currentTarget));
-  card.querySelector("[data-mfa-avatar]").textContent = account.platform.slice(0, 1).toUpperCase();
-  card.querySelector("[data-mfa-badge]").textContent = [
-    account.secret ? "Có MFA" : "Tài khoản",
-    account.createdAt ? `Thêm ngày ${accountDateFormat.format(account.createdAt)}` : "",
-  ].filter(Boolean).join(" · ");
+  const name = card.querySelector("[data-mfa-name]");
+  const nameValue = account.email || account.platform;
+  const nameLabel = account.email ? "Tên đăng nhập" : "Nền tảng";
+  name.querySelector("span").textContent = nameValue;
+  name.title = `Sao chép ${nameLabel.toLowerCase()}`;
+  name.setAttribute("aria-label", `${name.title} ${nameValue}`);
+  name.addEventListener("click", () => copyValue(nameValue, nameLabel, name));
+  const platform = card.querySelector("[data-mfa-platform]");
+  if (account.email) {
+    platform.textContent = account.platform;
+    platform.addEventListener("click", () => copyValue(account.platform, "Nền tảng", platform));
+  } else platform.remove();
+  const date = card.querySelector("[data-mfa-date]");
+  if (account.createdAt) {
+    date.dateTime = new Date(account.createdAt).toISOString();
+    date.textContent = accountDateFormat.format(account.createdAt);
+  } else date.remove();
   const remaining = card.querySelector("[data-mfa-limit-remaining]");
   remaining.id = `mfa-limit-remaining-${account.id}`;
   card.querySelector('[data-mfa-limit="limit5h"]').setAttribute("aria-describedby", remaining.id);
@@ -562,17 +567,11 @@ function createAccountCard(account) {
     });
   }
   refreshLimit5h(card, account);
-  let colorIndex = 0;
-  for (const char of account.platform) colorIndex = (colorIndex + char.codePointAt(0)) % 5;
-  card.querySelector("[data-mfa-avatar]").dataset.color = colorIndex;
   const credentials = card.querySelector("[data-mfa-credentials]");
-  credentials.append(credentialRow("Email / tên đăng nhập", account.email), credentialRow("Mật khẩu", account.password, true), credentialRow("Khóa MFA", account.secret, true));
-  const codeButton = card.querySelector("[data-mfa-code]");
+  if (account.password) credentials.append(credentialRow("Mật khẩu", account.password));
+  if (account.secret) credentials.append(credentialRow("Khóa MFA", account.secret));
   const copyCode = card.querySelector("[data-mfa-copy-code]");
-  for (const button of [codeButton, copyCode]) button.addEventListener("click", () => copyValue(codeButton.dataset.code, "Mã xác thực", button));
-  if (!account.secret) {
-    card.querySelector("[data-mfa-otp]").innerHTML = `<p class="mfa-no-otp">${icon("key")} Chưa có MFA</p>`;
-  }
+  copyCode?.addEventListener("click", () => copyValue(copyCode.dataset.code, "Mã xác thực", copyCode));
   card.querySelector("[data-mfa-edit]").addEventListener("click", () => renderSetup(account));
   card.querySelector("[data-mfa-delete]").addEventListener("click", async (event) => {
     const name = [account.platform, account.email].filter(Boolean).join(" · ");
@@ -605,8 +604,6 @@ function refreshAccountList(now = Date.now()) {
     if (account.limit5hUntil) nextUsableAt = Math.min(nextUsableAt, account.limit5hUntil);
     return false;
   }).sort((a, b) => b.createdAt - a.createdAt || a.platform.localeCompare(b.platform, "vi") || a.email.localeCompare(b.email, "vi"));
-  body.querySelector("[data-mfa-total]").textContent = `${all.length} tài khoản`;
-  body.querySelector("[data-mfa-results]").textContent = query || usableOnly ? `${sorted.length} kết quả` : "";
   const focused = document.activeElement;
   const focusedCard = focused?.closest("[data-mfa-account]");
   const focusId = focusedCard?.dataset.mfaAccount;
@@ -616,14 +613,8 @@ function refreshAccountList(now = Date.now()) {
   if (!sorted.length) {
     const empty = document.createElement("div");
     empty.className = "mfa-empty";
-    empty.innerHTML = `${icon(query || usableOnly ? "search" : "key")}<h3></h3><p></p>`;
-    if (usableOnly && all.length) {
-      empty.querySelector("h3").textContent = query ? "Không có tài khoản dùng được khớp tìm kiếm" : "Không có tài khoản nào dùng được";
-      empty.querySelector("p").textContent = query ? "Thử từ khóa khác hoặc bỏ lọc." : "Bỏ lọc để xem tất cả tài khoản.";
-    } else {
-      empty.querySelector("h3").textContent = query ? "Không tìm thấy tài khoản" : "Chưa có tài khoản";
-      empty.querySelector("p").textContent = query ? "Thử tìm bằng nền tảng hoặc email khác." : "Thêm nền tảng, email, mật khẩu và khóa MFA nếu có.";
-    }
+    empty.textContent = query ? "Không tìm thấy tài khoản"
+      : usableOnly && all.length ? "Không có tài khoản còn lượt" : "Chưa có tài khoản";
     list.append(empty);
   } else {
     for (const account of sorted) list.append(createAccountCard(account));
@@ -643,13 +634,10 @@ function renderList() {
   clearInterval(tickTimer);
   body.innerHTML = `
     <div class="mfa-toolbar">
-      <div>
-        <div class="mfa-toolbar-title"><h3>Danh sách tài khoản</h3><label class="mfa-usable-filter"><input data-mfa-usable-only type="checkbox"><span>Còn sử dụng được</span></label></div>
-        <p class="mfa-meta" data-mfa-total></p>
-      </div>
-      <button class="mfa-primary" data-mfa-add type="button">${icon("plus")}<span>Thêm tài khoản</span></button>
+      <label class="mfa-search">${icon("search")}<input data-mfa-search type="search" placeholder="Tìm tài khoản…" aria-label="Tìm tài khoản" autocomplete="off"></label>
+      <label class="mfa-usable-filter"><input data-mfa-usable-only type="checkbox"><span>Còn lượt</span></label>
+      <button class="mfa-primary" data-mfa-add type="button" aria-label="Thêm tài khoản">${icon("plus")}<span>Thêm</span></button>
     </div>
-    <div class="mfa-search-wrap"><label class="mfa-search">${icon("search")}<input data-mfa-search type="search" placeholder="Tìm nền tảng, email…" aria-label="Tìm tài khoản" autocomplete="off"></label><span class="mfa-meta" data-mfa-results></span></div>
     <p class="mfa-error" data-mfa-error role="alert"></p>
     <div class="mfa-account-list" data-mfa-list></div>
   `;
@@ -668,9 +656,9 @@ function renderSetup(existing = null) {
   currentView = "setup";
   clearInterval(tickTimer);
   body.innerHTML = `
-    <div class="mfa-form-top"><button class="mfa-back" data-mfa-back type="button">← Danh sách tài khoản</button><span class="mfa-meta">${existing ? "Chỉnh sửa" : "Tài khoản mới"}</span></div>
+    <div class="mfa-form-top"><button class="mfa-back" data-mfa-back type="button">← Quay lại</button></div>
     <form class="mfa-form" data-mfa-form autocomplete="off">
-      <div class="mfa-form-heading"><h3>${existing ? "Sửa tài khoản" : "Thêm tài khoản"}</h3><p class="mfa-meta">Điền thông tin bạn muốn lưu. Khóa MFA là tùy chọn.</p></div>
+      <div class="mfa-form-heading"><h3>${existing ? "Sửa tài khoản" : "Thêm tài khoản"}</h3></div>
       <div class="mfa-form-grid">
         <label class="mfa-form-label">Nền tảng <span class="mfa-required">*</span><input data-mfa-platform class="mfa-field" type="text" list="mfa-platforms" placeholder="Gmail, ChatGPT, Facebook…" maxlength="100" required><datalist id="mfa-platforms"><option value="Gmail"><option value="ChatGPT"><option value="Facebook"><option value="Instagram"><option value="Microsoft"><option value="Claude"><option value="GitHub"></datalist></label>
         <label class="mfa-form-label">Email / tên đăng nhập<input data-mfa-email class="mfa-field" type="text" inputmode="email" placeholder="email@example.com" spellcheck="false" autocapitalize="none" autocomplete="off"></label>
@@ -823,7 +811,7 @@ const headerButton = document.createElement("button");
 headerButton.type = "button";
 headerButton.className = "mfa-header-button text-fg";
 headerButton.setAttribute("aria-label", "Quản lý tài khoản");
-headerButton.title = "Tài khoản & mật khẩu";
+headerButton.title = "Tài khoản";
 headerButton.innerHTML = icon("key");
 headerButton.addEventListener("click", openAuthenticator);
 
