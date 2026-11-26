@@ -11,8 +11,8 @@ const MINUTE = 60 * 1000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 const LIMITS = {
-  limit5h: { label: "Hết 5h", description: "Hạn mức 5 giờ", duration: 5 * HOUR },
-  limitWeek: { label: "Hết tuần", description: "Hạn mức tuần", duration: 7 * DAY },
+  limit5h: { label: "Hết 5h", description: "Hạn mức 5 giờ" },
+  limitWeek: { label: "Hết tuần", description: "Hạn mức tuần" },
 };
 const platformDomains = new Map([
   ["chatgpt", "chatgpt.com"], ["chatgptplus", "chatgpt.com"], ["codex", "chatgpt.com"], ["openai", "chatgpt.com"],
@@ -363,7 +363,6 @@ async function initializeSync() {
 }
 
 const icons = {
-  copy: '<rect x="9" y="9" width="12" height="12" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>',
   more: '<circle cx="5" cy="12" r="1" fill="currentColor"></circle><circle cx="12" cy="12" r="1" fill="currentColor"></circle><circle cx="19" cy="12" r="1" fill="currentColor"></circle>',
   edit: '<path d="m16 3 5 5-12 12-6 1 1-6Z"></path><path d="m14 5 5 5"></path>',
   trash: '<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7"></path>',
@@ -391,15 +390,35 @@ modal.innerHTML = `
       <button type="button" role="menuitem" tabindex="-1" data-mfa-edit>${icon("edit")} Sửa</button>
       <button class="mfa-danger" type="button" role="menuitem" tabindex="-1" data-mfa-delete>${icon("trash")} Xóa</button>
     </div>
+    <div class="mfa-week-overlay" hidden>
+      <section class="mfa-week-dialog" role="dialog" aria-modal="true" aria-labelledby="mfa-week-title">
+        <h3 id="mfa-week-title">Lượt tuần mở lại sau</h3>
+        <form data-mfa-week-form>
+          <div class="mfa-week-fields">
+            <label class="mfa-form-label">Ngày<input class="mfa-field" type="number" name="days" min="0" step="1" inputmode="numeric" placeholder="0"></label>
+            <label class="mfa-form-label">Giờ<input class="mfa-field" type="number" name="hours" min="0" step="1" inputmode="numeric" placeholder="0"></label>
+          </div>
+          <p class="mfa-week-error" role="alert"></p>
+          <div class="mfa-week-actions"><button class="mfa-secondary" type="button" data-mfa-week-cancel>Hủy</button><button class="mfa-primary" type="submit">Lưu</button></div>
+        </form>
+      </section>
+    </div>
     <div class="mfa-toast" role="status" aria-live="polite" hidden></div>
   </section>
 `;
 document.body.append(modal);
 const body = modal.querySelector("[data-mfa-body]");
 const panel = modal.querySelector(".mfa-card");
+const head = modal.querySelector(".mfa-head");
 const accountMenu = modal.querySelector("#mfa-account-menu");
 const menuItems = [...accountMenu.querySelectorAll("button")];
+const weekOverlay = modal.querySelector(".mfa-week-overlay");
+const weekForm = weekOverlay.querySelector("[data-mfa-week-form]");
+const weekDays = weekForm.elements.namedItem("days");
+const weekHours = weekForm.elements.namedItem("hours");
+const weekError = weekForm.querySelector(".mfa-week-error");
 let accountMenuTrigger = null;
+let weekAccountId = null;
 let toastTimer = null;
 
 function notify(message) {
@@ -473,6 +492,76 @@ function refreshLimits(card, account, now = Date.now()) {
   }
 }
 
+function findAccountCard(id) {
+  return [...body.querySelectorAll("[data-mfa-account]")].find(card => card.dataset.mfaAccount === id);
+}
+
+async function saveLimit(accountId, field, deadline) {
+  const account = accounts[accountId];
+  const key = `${accountId}/${field}`;
+  if (!account || pendingLimits.has(key)) return;
+  const changes = { [field]: Boolean(deadline), [`${field}Until`]: deadline };
+  pendingLimits.set(key, changes);
+  const card = findAccountCard(accountId);
+  if (card) {
+    card.querySelector(`[data-mfa-limit="${field}"]`).setAttribute("aria-busy", "true");
+    refreshLimits(card, account);
+  }
+  try {
+    await updateAccount(accountId, changes);
+    if (!initialized) initializeSync().catch(() => {});
+  } catch (error) {
+    notify(`Không lưu được hạn mức. ${error.message}`);
+  } finally {
+    pendingLimits.delete(key);
+    if (!modal.hidden && currentView === "list") refreshAccountList();
+  }
+}
+
+function openWeekEditor(accountId) {
+  closeAccountMenu();
+  weekAccountId = accountId;
+  weekForm.reset();
+  weekError.textContent = "";
+  body.inert = true;
+  head.inert = true;
+  weekOverlay.hidden = false;
+  weekDays.focus({ preventScroll: true });
+}
+
+function closeWeekEditor(restoreFocus = false) {
+  if (weekAccountId === null) return;
+  const accountId = weekAccountId;
+  weekAccountId = null;
+  weekOverlay.hidden = true;
+  body.inert = false;
+  head.inert = false;
+  if (restoreFocus) {
+    const input = findAccountCard(accountId)?.querySelector('[data-mfa-limit="limitWeek"]');
+    (input || body.querySelector("[data-mfa-search]"))?.focus({ preventScroll: true });
+  }
+}
+
+weekForm.addEventListener("input", () => { weekError.textContent = ""; });
+weekForm.querySelector("[data-mfa-week-cancel]").addEventListener("click", () => closeWeekEditor(true));
+weekOverlay.addEventListener("click", (event) => { if (event.target === weekOverlay) closeWeekEditor(true); });
+weekForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (weekAccountId === null) return;
+  const now = Date.now();
+  const days = Number(weekDays.value);
+  const hours = Number(weekHours.value);
+  const deadline = now + days * DAY + hours * HOUR;
+  if (![days, hours].every(value => Number.isSafeInteger(value) && value >= 0) || !Number.isSafeInteger(deadline) || deadline <= now) {
+    weekError.textContent = "Nhập thời gian còn lại lớn hơn 0.";
+    weekDays.focus({ preventScroll: true });
+    return;
+  }
+  const accountId = weekAccountId;
+  closeWeekEditor(true);
+  void saveLimit(accountId, "limitWeek", deadline);
+});
+
 function startTicker() {
   clearInterval(tickTimer);
   if (modal.hidden || modal.dataset.overlayState === "closing" || currentView !== "list") return;
@@ -521,7 +610,7 @@ function credentialRow(label, value) {
   row.type = "button";
   row.title = `Sao chép ${label.toLowerCase()}`;
   row.setAttribute("aria-label", row.title);
-  row.innerHTML = `<span class="mfa-value mfa-mono"></span>${icon("copy")}`;
+  row.innerHTML = '<span class="mfa-value mfa-mono"></span>';
   row.querySelector(".mfa-value").textContent = value;
   row.addEventListener("click", () => copyValue(value, label, row));
   return row;
@@ -629,7 +718,6 @@ function createAccountCard(account) {
       <button class="mfa-otp" type="button" data-mfa-copy-code aria-label="Sao chép mã xác thực" title="Sao chép mã xác thực" disabled>
         <span class="mfa-code" data-mfa-code>··· ···</span>
         <span class="mfa-countdown" data-mfa-countdown></span>
-        ${icon("copy")}
         <span class="mfa-progress" aria-hidden="true"><span data-mfa-progress></span></span>
       </button>` : ""}
   `;
@@ -646,25 +734,17 @@ function createAccountCard(account) {
     const field = input.dataset.mfaLimit;
     const key = `${account.id}/${field}`;
     if (pendingLimits.has(key)) input.setAttribute("aria-busy", "true");
-    input.addEventListener("change", async () => {
+    input.addEventListener("change", () => {
       if (pendingLimits.has(key)) {
         refreshLimits(card, account);
         return;
       }
-      const checked = input.checked;
-      const changes = { [field]: checked, [`${field}Until`]: checked ? Date.now() + LIMITS[field].duration : 0 };
-      pendingLimits.set(key, changes);
-      input.setAttribute("aria-busy", "true");
-      refreshLimits(card, account);
-      try {
-        await updateAccount(account.id, changes);
-        if (!initialized) initializeSync().catch(() => {});
-      } catch (error) {
-        notify(`Không lưu được hạn mức. ${error.message}`);
-      } finally {
-        pendingLimits.delete(key);
-        if (!modal.hidden && currentView === "list") refreshAccountList();
+      if (input.checked && field === "limitWeek") {
+        refreshLimits(card, account);
+        openWeekEditor(account.id);
+        return;
       }
+      void saveLimit(account.id, field, input.checked ? Date.now() + 5 * HOUR : 0);
     });
   }
   refreshLimits(card, account);
@@ -681,6 +761,7 @@ function refreshAccountList(now = Date.now()) {
   const list = body.querySelector("[data-mfa-list]");
   if (!list) return;
   closeAccountMenu(true);
+  if (weekAccountId !== null && !accounts[weekAccountId]) closeWeekEditor(true);
   const query = searchQuery.trim().toLocaleLowerCase("vi");
   const all = Object.values(accounts).map((value) => normalizeAccount(value)).filter(Boolean);
   nextUsableAt = Infinity;
@@ -719,6 +800,7 @@ function refreshAccountList(now = Date.now()) {
 
 function renderList() {
   closeAccountMenu();
+  closeWeekEditor();
   currentView = "list";
   clearInterval(tickTimer);
   body.innerHTML = `
@@ -743,6 +825,7 @@ function renderList() {
 
 function renderSetup(existing = null) {
   closeAccountMenu();
+  closeWeekEditor();
   currentView = "setup";
   clearInterval(tickTimer);
   body.innerHTML = `
@@ -853,6 +936,7 @@ function renderSetup(existing = null) {
 let modalVersion = 0;
 async function openAuthenticator() {
   closeAccountMenu();
+  closeWeekEditor();
   const version = ++modalVersion;
   returnFocus = document.activeElement;
   modal.hidden = false;
@@ -875,6 +959,7 @@ async function openAuthenticator() {
 function closeAuthenticator() {
   if (modal.hidden || modal.dataset.overlayState === "closing") return;
   closeAccountMenu();
+  closeWeekEditor();
   const version = ++modalVersion;
   clearInterval(tickTimer);
   animateOverlay(modal, "exit", "dialog").then(finished => {
@@ -886,7 +971,11 @@ function closeAuthenticator() {
 }
 
 modal.querySelector(".mfa-close").addEventListener("click", closeAuthenticator);
-modal.addEventListener("click", (event) => event.target === modal && closeAuthenticator());
+modal.addEventListener("click", (event) => {
+  if (event.target !== modal) return;
+  if (weekAccountId !== null) closeWeekEditor(true);
+  else closeAuthenticator();
+});
 document.addEventListener("pointerdown", (event) => {
   if (accountMenuTrigger && !accountMenu.contains(event.target) && !accountMenuTrigger.contains(event.target)) closeAccountMenu();
 });
@@ -898,7 +987,8 @@ window.addEventListener("keydown", (event) => {
   if (modal.hidden || modal.dataset.overlayState === "closing") return;
   if (event.key === "Escape") {
     event.preventDefault();
-    if (accountMenuTrigger) closeAccountMenu(true);
+    if (weekAccountId !== null) closeWeekEditor(true);
+    else if (accountMenuTrigger) closeAccountMenu(true);
     else closeAuthenticator();
     return;
   }
@@ -918,12 +1008,13 @@ window.addEventListener("keydown", (event) => {
     }
   }
   if (event.key !== "Tab") return;
-  const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')].filter((element) => element.getClientRects().length);
+  const scope = weekAccountId !== null ? weekOverlay : modal;
+  const focusable = [...scope.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')].filter((element) => element.getClientRects().length);
   const first = focusable[0];
   const last = focusable.at(-1);
   if (!first) { event.preventDefault(); panel.focus(); return; }
-  if (event.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
-  else if (!event.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+  if (event.shiftKey && (document.activeElement === first || !scope.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && (document.activeElement === last || !scope.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
 });
 
 const headerButton = document.createElement("button");

@@ -1,4 +1,4 @@
-.mfa-modal[hidden], .mfa-toast[hidden], .mfa-account-menu[hidden] { display: none !important; }
+.mfa-modal[hidden], .mfa-toast[hidden], .mfa-account-menu[hidden], .mfa-week-overlay[hidden] { display: none !important; }
 .mfa-modal { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 24px; background: rgba(0, 0, 0, .72); }
 .mfa-card { position: relative; display: flex; flex-direction: column; width: min(960px, 100%); max-height: calc(100dvh - 48px); overflow: hidden; border: 1px solid var(--color-line, #2c333c); border-radius: 22px; background: var(--color-bar, #1b1e22); color: var(--color-fg, #e8edf3); box-shadow: 0 24px 80px rgba(0, 0, 0, .55); }
 .mfa-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 22px; border-bottom: 1px solid var(--color-line); }
@@ -7,7 +7,7 @@
 .mfa-meta, .mfa-help, .mfa-error { font-size: 13px; line-height: 1.5; }
 .mfa-meta, .mfa-help { color: var(--color-muted); }
 .mfa-body { min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; padding: 18px 22px 24px; }
-.mfa-card:has(> .mfa-account-menu:not([hidden])) .mfa-body { overflow-y: hidden; }
+.mfa-card:has(> :is(.mfa-account-menu, .mfa-week-overlay):not([hidden])) .mfa-body { overflow-y: hidden; }
 .mfa-row { justify-content: space-between; }
 .mfa-toolbar { margin-bottom: 16px; }
 .mfa-form-heading h3 { margin: 0; font-size: 17px; font-weight: 650; }
@@ -52,14 +52,13 @@
 .mfa-limit span { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .mfa-credentials { padding: 0 14px; }
 .mfa-credentials h3 { margin: 0; }
-.mfa-credential { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 10px 2px; border-top: 1px solid var(--color-line); text-align: left; cursor: pointer; }
+.mfa-credential { display: block; width: 100%; min-height: 48px; padding: 10px 2px; border-top: 1px solid var(--color-line); text-align: left; cursor: pointer; }
 .mfa-account-name .mfa-value { color: var(--color-accent); font-family: inherit; font-weight: 650; }
 .mfa-credential:hover .mfa-value { color: var(--color-accent); }
 .mfa-value { font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; white-space: pre-wrap; user-select: text; }
 .mfa-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-.mfa-credential svg, .mfa-otp svg { width: 15px; height: 15px; color: var(--color-muted); }
 .mfa-modal button:disabled { cursor: default; opacity: .35; }
-.mfa-otp { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 6px 10px; width: 100%; padding: 11px 16px 12px; border-top: 1px solid var(--color-line); background: #6cb6ff08; text-align: left; cursor: pointer; }
+.mfa-otp { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 10px; width: 100%; padding: 11px 16px 12px; border-top: 1px solid var(--color-line); background: #6cb6ff08; text-align: left; cursor: pointer; }
 .mfa-otp:hover:not(:disabled) { background: #6cb6ff12; }
 .mfa-code { font: 650 26px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--color-accent); white-space: nowrap; }
 .mfa-otp:disabled .mfa-code { font-size: 16px; }
@@ -93,6 +92,13 @@ textarea.mfa-field { resize: vertical; }
 .mfa-modal button:focus-visible, .mfa-back:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 3px; }
 .mfa-modal .mfa-otp:focus-visible { outline-offset: -4px; }
 .mfa-modal .mfa-account-menu button:focus-visible { outline-offset: -2px; }
+.mfa-week-overlay { position: absolute; inset: 0; z-index: 3; display: grid; place-items: center; overflow: auto; overscroll-behavior: contain; padding: 14px; background: #0008; }
+.mfa-week-dialog { width: min(340px, 100%); max-height: 100%; overflow: auto; padding: 18px; border: 1px solid var(--color-line); border-radius: 14px; background: var(--color-bar); box-shadow: 0 10px 30px #0007; }
+.mfa-week-dialog h3 { margin: 0 0 14px; font-size: 17px; font-weight: 650; }
+.mfa-week-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.mfa-week-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+.mfa-week-error { margin-top: 8px; color: var(--color-danger); font-size: 13px; }
+.mfa-week-error:empty { display: none; }
 @media (max-width: 720px) {
   .mfa-modal { padding: 12px; }
   .mfa-card { max-height: calc(100dvh - 24px); border-radius: 18px; }
