@@ -33,7 +33,7 @@ let tickTimer = null;
 let initialized = false;
 let searchQuery = "";
 let platformFilter = "gpt";
-let usableOnly = false;
+let usableOnly = true;
 let nextUsableAt = Infinity;
 let syncPromise = null;
 let returnFocus = null;
@@ -502,7 +502,7 @@ function findAccountCard(id) {
 async function saveLimit(accountId, field, deadline) {
   const account = accounts[accountId];
   const key = `${accountId}/${field}`;
-  if (!account || pendingLimits.has(key)) return;
+  if (!account || !isGptAccount(account) || pendingLimits.has(key)) return;
   const changes = { [field]: Boolean(deadline), [`${field}Until`]: deadline };
   pendingLimits.set(key, changes);
   const card = findAccountCard(accountId);
@@ -527,6 +527,7 @@ function setAccountListInert(inert) {
 }
 
 function openWeekEditor(accountId) {
+  if (!accounts[accountId] || !isGptAccount(accounts[accountId])) return;
   closeAccountMenu();
   weekAccountId = accountId;
   weekForm.reset();
@@ -713,9 +714,9 @@ function createAccountCard(account) {
   card.innerHTML = `
     <div class="mfa-card-head">
       <button class="mfa-platform-logo" data-mfa-platform type="button"><span aria-hidden="true"></span></button>
-      <div class="mfa-limits" role="group" aria-label="Hạn mức">
+      ${isGptAccount(account) ? `<div class="mfa-limits" role="group" aria-label="Hạn mức">
         ${Object.keys(LIMITS).map(field => `<label class="mfa-limit"><input type="checkbox" data-mfa-limit="${field}"><span></span></label>`).join("")}
-      </div>
+      </div>` : ""}
       <button class="mfa-icon-button mfa-account-more" data-mfa-more type="button" aria-label="Tùy chọn tài khoản" aria-haspopup="menu" aria-controls="mfa-account-menu" aria-expanded="false" title="Tùy chọn tài khoản">${icon("more")}</button>
     </div>
     <div class="mfa-credentials"><h3></h3></div>
@@ -767,6 +768,10 @@ function platformFilterKey(platform) {
   return ["gpt", "gptplus", "chatgpt", "chatgptplus", "codex", "openai"].includes(key) ? "gpt" : key;
 }
 
+function isGptAccount(account) {
+  return platformFilterKey(account.platform) === "gpt";
+}
+
 function refreshPlatformOptions(all) {
   const select = body.querySelector("[data-mfa-platform-filter]");
   if (!select) return;
@@ -800,7 +805,7 @@ function refreshAccountList(now = Date.now()) {
   const sorted = all.filter((account) => {
     if (platformFilter && platformFilterKey(account.platform) !== platformFilter) return false;
     if (!`${account.platform} ${account.email} ${account.label}`.toLocaleLowerCase("vi").includes(query)) return false;
-    if (!usableOnly) return true;
+    if (!usableOnly || !isGptAccount(account)) return true;
     const deadline = Math.max(activeLimitDeadline(account, "limit5h", now), activeLimitDeadline(account, "limitWeek", now));
     if (!deadline) return true;
     nextUsableAt = Math.min(nextUsableAt, deadline);
